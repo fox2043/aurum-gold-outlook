@@ -9,9 +9,10 @@ const avg=a=>a.reduce((s,v)=>s+v,0)/Math.max(1,a.length);
 const ma=(v,p,i=v.length-1)=>avg(v.slice(Math.max(0,i-p+1),i+1));
 function canvas(el){const r=el.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);el.width=Math.max(1,Math.round(r.width*d));el.height=Math.max(1,Math.round(r.height*d));const c=el.getContext('2d');c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,r.width,r.height);return{c,w:r.width,h:r.height}}
 function clock(){const now=new Date();$('#clock').textContent=now.toLocaleTimeString('zh-CN',{hour12:false});if(state.data){const age=Math.max(0,Math.round((Date.now()-new Date(state.data.market.updatedAt))/1000));$('#freshness').textContent=state.data.deployment?`部署快照 · ${new Date(state.data.deployment.generatedAt).toLocaleString('zh-CN')}`:`${age}秒前`}}
-function renderKpis(m){const cmb=m.cmbGold||{}, domestic=m.domesticGold||{};const items=[
+function renderKpis(m){const cmb=m.cmbGold||{},account=m.cmbAppGoldAccount||{displayPrice:953.77,quoteTime:'2026-08-13 · 用户核验',sideLabel:'App 对客价'}, domestic=m.domesticGold||{};const items=[
   {n:'COMEX 黄金主连',s:m.gold,v:m.gold.value,p:m.gold.change,u:'USD/OZ'},
   {n:'伦敦现货黄金',s:m.spotGold,v:m.spotGold.value,p:m.spotGold.change,u:'USD/OZ'},
+  {n:'招行 App · 黄金账户',s:{quoteTime:`${account.sideLabel||'App 对客价'} · ${account.quoteTime||'待核验'}`},v:account.displayPrice,p:null,u:'CNY/G'},
   {n:'招行官网 · Au99.99',s:cmb,v:cmb.value,p:cmb.change,u:'CNY/G'},
   {n:'上金所 Au99.99',s:m.chinaGold,v:m.chinaGold.value,p:m.chinaGold.change,u:'CNY/G'},
   {n:'国际现货折算',s:domestic,v:domestic.theoreticalCnyGram,p:null,u:'CNY/G'},
