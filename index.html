@@ -33,12 +33,13 @@
 
       <aside class="forecast-panel" aria-labelledby="forecastTitle">
         <div class="panel-head"><div><small>MODELLED OUTLOOK / 1–5D</small><h2 id="forecastTitle">黄金走势预测</h2></div><span id="forecastDate">--</span></div>
-        <div class="forecast-head"><div><small>方向倾向</small><strong id="regime">计算中</strong></div><div><b id="confidence">--</b><small>% 置信度</small></div></div>
+        <div class="forecast-hero"><small>未来 1—5 个交易日基准判断</small><strong id="regime">计算中</strong><div class="confidence"><b id="confidence">--</b><span>置信度<br>%</span></div><p id="forecastNarrative">模型正在计算价格区间与关键条件</p></div>
+        <div class="target-band"><span>预期核心区间</span><strong id="baseCaseTarget">--</strong><small>USD / OZ</small></div>
         <div class="outlook-map" id="outlookMap" aria-label="未来五日黄金预测目标区间">
           <div class="map-scale"><span id="mapHigh">--</span><span id="mapCurrent">--</span><span id="mapLow">--</span></div>
           <div class="map-track"><div class="forecast-window" id="forecastWindow"><span>未来 1—5 日预期区间</span></div><i class="current-marker" id="currentMarker"><b>当前价</b></i><i class="support-marker" id="supportMarker"><b>支撑</b></i><i class="resistance-marker" id="resistanceMarker"><b>压力</b></i></div>
         </div>
-        <div class="outlook-cards"><article class="base-case"><small>基准推演</small><strong id="baseCaseTarget">--</strong><span id="baseCaseText">--</span></article><article class="bull-case"><small>上行触发</small><strong id="bullCaseTarget">--</strong><span id="bullCaseText">--</span></article><article class="bear-case"><small>下行风险</small><strong id="bearCaseTarget">--</strong><span id="bearCaseText">--</span></article></div>
+        <div class="scenario-summary"><article class="base-case"><small>基准情景</small><strong id="baseCaseText">--</strong></article><article class="bull-case"><small>上行触发</small><strong id="bullCaseTarget">--</strong><span id="bullCaseText">--</span></article><article class="bear-case"><small>下行风险</small><strong id="bearCaseTarget">--</strong><span id="bearCaseText">--</span></article></div>
         <div class="price-levels"><div><small>支撑位</small><b id="goldSupport">--</b></div><div><small>压力位</small><b id="goldResistance">--</b></div><div><small>预期日波动</small><b id="goldMa20">--</b></div></div>
       </aside>
     </section>
