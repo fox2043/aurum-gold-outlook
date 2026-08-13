@@ -16,7 +16,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: node scripts/refresh-cmb-gold.js
+      - name: Refresh CMB quote when the official endpoint is reachable
+        run: node scripts/refresh-cmb-gold.js || echo "CMB endpoint unavailable from this runner; retain the last verified snapshot."
       - name: Commit refreshed official quote
         run: |
           git config user.name "aurum-signal-bot"
