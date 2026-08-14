@@ -20,20 +20,24 @@ function fetchJson(url) {
 }
 
 // EastMoney COMEX gold main continuous (GC00Y) kline. fields2: f51 date, f52 open, f53 close, f54 high, f55 low. Timestamps are Beijing time.
-const EM_BASE = 'https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=101.GC00Y&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55&fqt=1&beg=0&end=20500101';
+// Main host can be unreachable from some networks (DNS reset / hang up); rotate through numbered sub-domains.
+const EM_HOSTS = ['push2his.eastmoney.com', '92.push2his.eastmoney.com', '33.push2his.eastmoney.com'];
+const EM_PATH = '/api/qt/stock/kline/get?secid=101.GC00Y&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55&fqt=1&beg=0&end=20500101';
 
 async function fetchKlines(klt) {
   let lastError;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const payload = await fetchJson(`${EM_BASE}&klt=${klt}`);
-      const data = payload && payload.data;
-      if (!data || !Array.isArray(data.klines) || !data.klines.length) throw Error(`EastMoney kline empty for klt=${klt}`);
-      return data.klines.map(line => {
-        const [date, open, close, high, low] = line.split(',');
-        return { date, open: Number(open), close: Number(close), high: Number(high), low: Number(low) };
-      });
-    } catch (e) { lastError = e; if (attempt < 3) await new Promise(r => setTimeout(r, 2000 * attempt)); }
+  for (const host of EM_HOSTS) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const payload = await fetchJson(`https://${host}${EM_PATH}&klt=${klt}`);
+        const data = payload && payload.data;
+        if (!data || !Array.isArray(data.klines) || !data.klines.length) throw Error(`EastMoney kline empty for klt=${klt}`);
+        return data.klines.map(line => {
+          const [date, open, close, high, low] = line.split(',');
+          return { date, open: Number(open), close: Number(close), high: Number(high), low: Number(low) };
+        });
+      } catch (e) { lastError = e; if (attempt < 2) await new Promise(r => setTimeout(r, 1500)); }
+    }
   }
   throw lastError;
 }
