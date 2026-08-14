@@ -57,14 +57,25 @@ async function fromGoogleNews() {
 }
 
 (async () => {
-  let items, provider;
-  try { items = await fromJin10(); provider = '金十数据实时快讯 · 黄金相关'; }
-  catch (e1) {
-    console.warn(`jin10 unavailable: ${e1.message}; fallback to Google News RSS`);
-    items = await fromGoogleNews(); provider = 'Google News RSS · 公开聚合';
+  // Merge both sources when available (jin10 realtime + Google News breadth); fall back to either one.
+  const results = await Promise.allSettled([fromJin10(), fromGoogleNews()]);
+  const merged = [];
+  const seen = new Set();
+  for (const r of results) {
+    if (r.status !== 'fulfilled') continue;
+    for (const item of r.value) {
+      const key = item.title.slice(0, 40);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+    }
   }
+  if (!merged.length) throw Error('no gold intelligence from any source');
+  const providers = [];
+  if (results[0].status === 'fulfilled') providers.push('金十数据实时快讯');
+  if (results[1].status === 'fulfilled') providers.push('Google News');
   const dashboard = JSON.parse(fs.readFileSync(target, 'utf8'));
-  dashboard.news = { ...(dashboard.news || {}), source: provider, updatedAt: new Date().toISOString(), items };
+  dashboard.news = { ...(dashboard.news || {}), source: `${providers.join(' + ')} · 黄金相关`, updatedAt: new Date().toISOString(), items: merged.slice(0, 9) };
   fs.writeFileSync(target, JSON.stringify(dashboard) + '\n');
-  console.log(`Gold intelligence refreshed via ${provider}: ${items.length} items`);
+  console.log(`Gold intelligence refreshed via ${providers.join(' + ')}: ${merged.length} items`);
 })().catch(error => { console.error(error); process.exit(1); });
