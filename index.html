@@ -9,7 +9,7 @@
   <meta name="description" content="黄金行情、国内金价参考、实时情报与走势预测静态展示站" />
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=202608141540" />
+  <link rel="stylesheet" href="styles.css?v=202608141558" />
 </head>
 <body>
   <div class="grid-field" aria-hidden="true"></div>
@@ -22,6 +22,8 @@
     </header>
 
     <section class="gold-strip" id="kpiRibbon" aria-label="黄金核心报价"><div class="loading"></div></section>
+
+    <section class="news-panel full-news" aria-labelledby="newsTitle"><div class="panel-head"><div><small>LIVE GOLD INTELLIGENCE / 每 6 小时更新</small><h2 id="newsTitle">实时黄金情报</h2></div><span class="live-dot" id="newsStamp">事件流</span></div><div id="newsTimeline" class="news-list"><div class="loading"></div></div></section>
 
     <section class="hero-grid">
       <section class="price-panel" aria-labelledby="marketTitle">
@@ -42,7 +44,7 @@
       </section>
 
       <aside class="forecast-panel" aria-labelledby="forecastTitle">
-        <div class="panel-head"><div><small>MODELLED OUTLOOK / 1–5D</small><h2 id="forecastTitle">黄金走势预测</h2></div><span id="forecastDate">--</span></div>
+        <div class="panel-head"><div><small>MODELLED OUTLOOK / 1–5D · 每 2 小时更新</small><h2 id="forecastTitle">黄金走势预测</h2></div><span id="forecastDate">--</span></div>
         <div class="forecast-hero"><small>未来 1—5 个交易日基准判断</small><strong id="regime">计算中</strong><div class="confidence"><b id="confidence">--</b><span>置信度<br>%</span></div><p id="forecastNarrative">模型正在计算价格区间与关键条件</p><div class="forecast-disclaimer">预测仅作参考，不作为实际投资建议</div></div>
         <div class="target-band"><span>预期核心区间</span><strong id="baseCaseTarget">--</strong><small>USD / OZ</small></div>
         <div class="outlook-map" id="outlookMap" aria-label="未来五日黄金预测目标区间">
@@ -54,13 +56,11 @@
       </aside>
     </section>
 
-    <section class="news-panel full-news" aria-labelledby="newsTitle"><div class="panel-head"><div><small>LIVE GOLD INTELLIGENCE / 每 6 小时更新</small><h2 id="newsTitle">实时黄金情报</h2></div><span class="live-dot" id="newsStamp">事件流</span></div><div id="newsTimeline" class="news-list"><div class="loading"></div></div></section>
-
     <section class="top-insights">
       <section class="expert-panel" aria-labelledby="expertTitle"><div class="panel-head"><div><small>PUBLIC EXPERT VIEWS / 每 6 小时更新</small><h2 id="expertTitle">专家预测</h2></div><span id="expertStamp">公开观点快照</span></div><p class="expert-intro">只收录可访问的公开研究观点；点击“查看原文”核对专家/机构、发布日期与完整表述。观点并不代表本站结论。</p><div class="expert-grid" id="expertGrid"><div class="loading"></div></div></section>
       <section class="signal-panel top-feedback"><div class="panel-head"><div><small>MODEL RATIONALE / ANALYST FEEDBACK</small><h2>预测依据与反馈</h2></div></div><div class="signal-list" id="insightStack"><div class="loading"></div></div><div class="risk-box"><small>使用提示</small><p id="invalidation">等待模型计算</p></div></section>
     </section>
 
     <footer>本页为非商业用途的公开静态研究展示。预测为规则化概率情景，不构成投资建议、收益承诺或交易指令。</footer>
-  </main><script src="app.js?v=202608141540"></script>
+  </main><script src="app.js?v=202608141558"></script>
 </body></html>
