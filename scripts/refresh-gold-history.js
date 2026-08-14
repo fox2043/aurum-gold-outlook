@@ -19,10 +19,10 @@ function fetchJson(url) {
   });
 }
 
-// EastMoney COMEX gold main continuous (GC00Y) kline. fields2: f51 date, f52 open, f53 close, f54 high, f55 low. Timestamps are Beijing time.
+// EastMoney London spot gold (XAU) kline. fields2: f51 date, f52 open, f53 close, f54 high, f55 low. Timestamps are Beijing time.
 // Main host can be unreachable from some networks (DNS reset / hang up); rotate through numbered sub-domains.
 const EM_HOSTS = ['push2his.eastmoney.com', '92.push2his.eastmoney.com', '33.push2his.eastmoney.com'];
-const EM_PATH = '/api/qt/stock/kline/get?secid=101.GC00Y&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55&fqt=1&beg=0&end=20500101';
+const EM_PATH = '/api/qt/stock/kline/get?secid=122.XAU&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55&fqt=1&beg=0&end=20500101';
 
 async function fetchKlines(klt) {
   let lastError;
@@ -58,10 +58,10 @@ async function fetchKlines(klt) {
     } else log.push(`daily skipped: ${last30.length} bars`);
   } catch (e) {
     log.push(`daily via EM failed: ${e.message}`);
-    // Fallback: Sina COMEX GC daily kline
+    // Fallback: Sina London spot XAU daily kline (same underlying instrument)
     try {
       const raw = await new Promise((resolve, reject) => {
-        const req = https.get('https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20gd=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=GC', { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://finance.sina.com.cn/' } }, res => { const chunks=[]; res.on('data', c => chunks.push(c)); res.on('end', () => res.statusCode === 200 ? resolve(Buffer.concat(chunks).toString('utf8')) : reject(Error(`sina HTTP ${res.statusCode}`))); });
+        const req = https.get('https://stock2.finance.sina.com.cn/futures/api/jsonp.php/var%20gd=/GlobalFuturesService.getGlobalFuturesDailyKLine?symbol=XAU', { headers: { 'User-Agent': 'Mozilla/5.0', Referer: 'https://finance.sina.com.cn/' } }, res => { const chunks=[]; res.on('data', c => chunks.push(c)); res.on('end', () => res.statusCode === 200 ? resolve(Buffer.concat(chunks).toString('utf8')) : reject(Error(`sina HTTP ${res.statusCode}`))); });
         req.setTimeout(25_000, () => req.destroy(Error('timeout'))); req.on('error', reject);
       });
       const m = raw.match(/=\((\[[\s\S]*\])\)/);
@@ -86,12 +86,17 @@ async function fetchKlines(klt) {
     }
     if (points.length >= 12) {
       gold.intraday = points.slice(-290);
+      gold.intradaySymbol = 'XAU';
       log.push(`intraday=${points.length} pts`);
     } else log.push(`intraday skipped: ${points.length} pts (market closed window)`);
-  } catch (e) { log.push(`intraday failed: ${e.message}`); }
+  } catch (e) {
+    log.push(`intraday failed: ${e.message}`);
+    // Drop legacy COMEX intraday points so the 24h chart never mixes instruments.
+    if (gold.intradaySymbol !== 'XAU' && Array.isArray(gold.intraday) && gold.intraday.length) { gold.intraday = []; log.push('legacy non-XAU intraday cleared'); }
+  }
 
   gold.historyUpdatedAt = new Date().toISOString();
-  gold.historyProvider = '东方财富/新浪 · COMEX 黄金主连（日K + 24h 5分钟线）';
+  gold.historyProvider = '东方财富/新浪 · 伦敦现货黄金 XAU（日K + 24h 5分钟线）';
   dashboard.market.updatedAt = new Date().toISOString();
   fs.writeFileSync(target, `${JSON.stringify(dashboard)}\n`, 'utf8');
   console.log(`gold history refreshed: ${log.join(' | ')}`);
