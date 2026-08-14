@@ -1,8 +1,8 @@
-name: Refresh weekly gold research
+name: Refresh gold intelligence and expert views
 
 on:
   schedule:
-    - cron: '17 1 * * 1'
+    - cron: '17 */6 * * *'
   workflow_dispatch:
 
 permissions:
@@ -16,10 +16,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - run: node scripts/refresh-gold-intelligence.js
       - run: node scripts/refresh-weekly-gold-research.js
       - run: |
           git config user.name "aurum-signal-bot"
           git config user.email "aurum-signal-bot@users.noreply.github.com"
           git add data/dashboard.json
-          git diff --cached --quiet || git commit -m "content: refresh weekly gold research"
+          git diff --cached --quiet || git commit -m "content: refresh gold intelligence and expert views"
           git push
