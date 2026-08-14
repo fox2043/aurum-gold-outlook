@@ -13,6 +13,7 @@ function getText(url) { return new Promise((resolve, reject) => {
 (async () => {
   const text = await getText(endpoint);
   const goldMatch = text.match(/v_hf_GC="([^"]+)"/);
+  const spotMatch = text.match(/v_hf_XAU="([^"]+)"/);
   if (!goldMatch) throw Error('Tencent COMEX gold quote missing');
   const fields = goldMatch[1].split(',');
   const price = Number(fields[0]);
@@ -27,6 +28,17 @@ function getText(url) { return new Promise((resolve, reject) => {
     quoteTime: `${fields[12]} ${fields[6]}`,
     provider: '腾讯全球期货行情 · COMEX GC'
   };
+  const point = { time: new Date().toISOString(), value: price };
+  dashboard.market.gold.intraday = [...(dashboard.market.gold.intraday || []).filter(x => Date.now() - new Date(x.time).getTime() < 86400000), point].slice(-288);
+  if (spotMatch) {
+    const spot = spotMatch[1].split(',');
+    const spotPrice = Number(spot[0]), spotPrevious = Number(spot[7]);
+    if (Number.isFinite(spotPrice)) dashboard.market.spotGold = {
+      ...(dashboard.market.spotGold || {}), value: spotPrice, open: Number(spot[2]), high: Number(spot[4]), low: Number(spot[5]), previous: spotPrevious,
+      change: spotPrevious ? (spotPrice / spotPrevious - 1) * 100 : dashboard.market.spotGold?.change,
+      quoteTime: `${spot[12]} ${spot[6]}`, provider: '腾讯全球期货行情 · 伦敦现货 XAU'
+    };
+  }
   dashboard.market.updatedAt = new Date().toISOString();
   dashboard.deployment = { ...(dashboard.deployment || {}), mode: 'static-scheduled-snapshot', generatedAt: new Date().toISOString(), notice: 'COMEX 由 GitHub Actions 定时更新；浏览器打开时再尝试直连分钟行情。' };
   fs.writeFileSync(target, `${JSON.stringify(dashboard)}\n`, 'utf8');
