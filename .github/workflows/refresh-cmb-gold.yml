@@ -24,6 +24,14 @@ jobs:
         run: node scripts/refresh-market-snapshot.js
       - name: Refresh 30-day daily and 24h intraday history
         run: node scripts/refresh-gold-history.js || echo "history refresh unavailable; retain prior series."
+      - name: Refresh modelled forecast when older than 2 hours
+        run: |
+          node -e "
+            const d = require('./data/dashboard.json');
+            const last = new Date(d.goldForecast?.computedAt || d.goldForecast?.asOf || 0).getTime() || 0;
+            process.exit(Date.now() - last > 2 * 3600 * 1000 ? 0 : 1);
+          " || { echo "forecast still fresh (<2h)"; exit 0; }
+          node scripts/refresh-gold-forecast.js || echo "forecast refresh unavailable"
       - name: Try to refresh CMB public quote
         run: node scripts/refresh-cmb-gold.js || echo "CMB endpoint unavailable from this runner; retain prior CMB snapshot."
       - name: Refresh intelligence and expert views when older than 6 hours
