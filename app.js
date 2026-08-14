@@ -131,7 +131,27 @@ function renderInsights(data) {
   $('#insightStack').innerHTML = items.length ? items.map(x => `<div class="signal" style="--tone:${color(x.tone)}"><small>${esc(x.label || '模型信号')}</small><strong>${esc(x.verdict || '')}</strong><p>${esc(x.trigger || '')}</p></div>`).join('') : '<div class="loading"></div>';
   text('#invalidation', a.invalidation || '价格脱离近5日区间并获得成交确认');
 }
-function render(data) { state.data=data;const m=data.market,a=m.gold,f=data.goldForecast||{};renderKpis(m);text('#systemState',m.liveUpdatedAt?'公网行情已连接':'公开快照加载中');text('#heroSymbol',`${a.symbol||'GC'} · ${a.name||'COMEX 黄金主连'}`);text('#heroValue',n(a.value));text('#heroChange',pct(a.change));$('#heroChange').className=tone(a.change);text('#heroOpen',n(a.open));text('#heroHigh',n(a.high));text('#heroLow',n(a.low));text('#heroAmplitude',n(m.spotGold?.value));text('#heroAmount',a.quoteTime||'--');text('#forecastDate',`${f.marketDate||'--'} · ${f.horizon||'未来 1—5 日'}`);text('#regime',f.bias||'等待模型更新');text('#confidence',f.confidence||'--');text('#forecastNarrative',f.action||'基于公开行情的规则化情景');text('#baseCaseTarget',`${n(f.expectedRange?.[0],1)} — ${n(f.expectedRange?.[1],1)}`);text('#goldSupport',`${n(f.support,1)} USD/OZ`);text('#goldResistance',`${n(f.resistance,1)} USD/OZ`);renderNews(data.news||{});renderExperts(data);renderInsights(data);drawDaily(a);drawIntraday(a);clock(); }
+function renderForecastExtras(f, price) {
+  const sc = f.scenarios || {};
+  text('#baseCaseText', sc.base != null ? `概率 ${sc.base}% · ${f.bias || ''}` : '--');
+  text('#bullCaseTarget', f.resistance != null ? n(f.resistance, 1) : '--');
+  text('#bullCaseText', `${sc.bull != null ? sc.bull + '% 概率 · ' : ''}${f.triggerUp || ''}`);
+  text('#bearCaseTarget', f.support != null ? n(f.support, 1) : '--');
+  text('#bearCaseText', `${sc.bear != null ? sc.bear + '% 概率 · ' : ''}${f.triggerDown || ''}`);
+  text('#goldMa20', f.atr != null ? `${n(f.atr, 1)} USD/OZ` : '--');
+  const lo = Math.min(f.support ?? Infinity, price ?? Infinity, ...(f.expectedRange || [Infinity]));
+  const hi = Math.max(f.resistance ?? -Infinity, price ?? -Infinity, ...(f.expectedRange || [-Infinity]));
+  const span = (hi - lo) || 1;
+  const pos = v => Number.isFinite(v) ? Math.max(1, Math.min(99, (v - lo) / span * 100)) : 50;
+  text('#mapHigh', n(hi, 0)); text('#mapCurrent', n(price, 0)); text('#mapLow', n(lo, 0));
+  const setLeft = (sel, v) => { const el = $(sel); if (el) el.style.left = pos(v) + '%'; };
+  setLeft('#currentMarker', price); setLeft('#supportMarker', f.support); setLeft('#resistanceMarker', f.resistance);
+  const win = $('#forecastWindow');
+  if (win && f.expectedRange) { win.style.left = pos(f.expectedRange[0]) + '%'; win.style.right = (100 - pos(f.expectedRange[1])) + '%'; }
+  const stamp = f.computedAt ? `每2小时更新 · ${new Date(f.computedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}` : '每2小时更新';
+  text('#forecastDate', `${f.marketDate || '--'} · ${stamp}`);
+}
+function render(data) { state.data=data;const m=data.market,a=m.gold,f=data.goldForecast||{};renderKpis(m);text('#systemState',m.liveUpdatedAt?'公网行情已连接':'公开快照加载中');text('#heroSymbol',`${a.symbol||'GC'} · ${a.name||'COMEX 黄金主连'}`);text('#heroValue',n(a.value));text('#heroChange',pct(a.change));$('#heroChange').className=tone(a.change);text('#heroOpen',n(a.open));text('#heroHigh',n(a.high));text('#heroLow',n(a.low));text('#heroAmplitude',n(m.spotGold?.value));text('#heroAmount',a.quoteTime||'--');text('#regime',f.bias||'等待模型更新');text('#confidence',f.confidence||'--');text('#forecastNarrative',f.action||'基于公开行情的规则化情景');text('#baseCaseTarget',`${n(f.expectedRange?.[0],1)} — ${n(f.expectedRange?.[1],1)}`);text('#goldSupport',`${n(f.support,1)} USD/OZ`);text('#goldResistance',`${n(f.resistance,1)} USD/OZ`);renderForecastExtras(f,a.value);renderNews(data.news||{});renderExperts(data);renderInsights(data);drawDaily(a);drawIntraday(a);clock(); }
 let resizeTimer; addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(state.data){drawDaily(state.data.market.gold);drawIntraday(state.data.market.gold);}},200);});
 async function load(){try{const r=await fetch(`./data/dashboard.json?t=${Date.now()}`,{cache:'no-store'});const data=await r.json();await refreshLive(data);render(data);}catch(e){console.error(e);text('#systemState','数据连接暂不可用');}}
 $('#refreshBtn').onclick=load;$('#fullscreenBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();setInterval(clock,1000);setInterval(()=>state.data&&refreshLive(state.data).then(()=>render(state.data)),15000);setInterval(load,300000);load();
