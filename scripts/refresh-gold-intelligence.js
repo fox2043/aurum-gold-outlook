@@ -1,0 +1,8 @@
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const target = path.join(__dirname, '..', 'data', 'dashboard.json');
+const feed = 'https://news.google.com/rss/search?q=%E9%BB%84%E9%87%91+when%3A1d&hl=zh-CN&gl=CN&ceid=CN%3Azh-Hans';
+const get = url => new Promise((resolve, reject) => https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 AURUM-SIGNAL/1.0' } }, r => { const chunks=[];r.on('data',x=>chunks.push(x));r.on('end',()=>r.statusCode===200?resolve(Buffer.concat(chunks).toString('utf8')):reject(Error(`RSS HTTP ${r.statusCode}`))); }).on('error',reject));
+const decode = s => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g,'$1').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+(async()=>{const xml=await get(feed);const items=[...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0,6).map(([,part])=>{const field=n=>decode((part.match(new RegExp(`<${n}>([\\s\\S]*?)<\/${n}>`))||[, ''])[1]).trim();const date=field('pubDate');return{category:'黄金',sentiment:'neutral',time:date?new Date(date).toLocaleDateString('zh-CN',{month:'2-digit',day:'2-digit'}).replace('/','-'):'最新',title:field('title'),summary:'每 6 小时更新的公开黄金资讯，点击原文核验。',source:'Google News 公开聚合',url:field('link')};}).filter(x=>x.title&&x.url);if(!items.length)throw Error('No gold intelligence items');const dashboard=JSON.parse(fs.readFileSync(target,'utf8'));dashboard.news={...(dashboard.news||{}),source:'Google News RSS · 公开聚合',updatedAt:new Date().toISOString(),items};fs.writeFileSync(target,JSON.stringify(dashboard)+'\n');console.log(`Gold intelligence refreshed: ${items.length}`);})().catch(error=>{console.error(error);process.exit(1)});
