@@ -1,4 +1,4 @@
-name: Refresh CMB gold quote
+name: Refresh gold market snapshot
 
 on:
   schedule:
@@ -16,12 +16,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Refresh CMB quote when the official endpoint is reachable
-        run: node scripts/refresh-cmb-gold.js || echo "CMB endpoint unavailable from this runner; retain the last verified snapshot."
-      - name: Commit refreshed official quote
+      - name: Refresh COMEX minute quote
+        run: node scripts/refresh-market-snapshot.js
+      - name: Try to refresh CMB public quote
+        run: node scripts/refresh-cmb-gold.js || echo "CMB endpoint unavailable from this runner; retain prior CMB snapshot."
+      - name: Commit refreshed market snapshot
         run: |
           git config user.name "aurum-signal-bot"
           git config user.email "aurum-signal-bot@users.noreply.github.com"
           git add data/dashboard.json
-          git diff --cached --quiet || git commit -m "data: refresh CMB Au99.99 quote"
+          git diff --cached --quiet || git commit -m "data: refresh gold market snapshot"
           git push
