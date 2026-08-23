@@ -150,6 +150,10 @@ function renderForecastExtras(f, price) {
   if (win && f.expectedRange) { win.style.left = pos(f.expectedRange[0]) + '%'; win.style.right = (100 - pos(f.expectedRange[1])) + '%'; }
   const stamp = f.computedAt ? `每2小时更新 · ${new Date(f.computedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}` : '每2小时更新';
   text('#forecastDate', `${f.marketDate || '--'} · ${stamp}`);
+  text('#expertWeight', `${f.weights?.expertViews ?? 50}%`);
+  text('#marketWeight', `${f.weights?.marketAndMacroData ?? 50}%`);
+  const signal = f.signals || {}, votes = signal.expertVotes || {};
+  text('#forecastSignal', `专家 ${n(signal.expertScore,1)} / 数据 ${n(signal.marketScore,1)} / 综合 ${n(signal.combinedScore,1)} · 专家观点 ${votes.total ?? 0} 条`);
 }
 function render(data) { state.data=data;const m=data.market,a=m.gold,f=data.goldForecast||{};renderKpis(m);text('#systemState',m.liveUpdatedAt?'公网行情已连接':'公开快照加载中');text('#heroSymbol',`${a.symbol||'XAU'} · ${a.name||'伦敦现货黄金'}`);text('#heroValue',n(a.value));text('#heroChange',pct(a.change));$('#heroChange').className=tone(a.change);text('#heroOpen',n(a.open));text('#heroHigh',n(a.high));text('#heroLow',n(a.low));text('#heroAmplitude',n(m.spotGold?.value));text('#heroAmount',a.quoteTime||'--');text('#regime',f.bias||'等待模型更新');text('#confidence',f.confidence||'--');text('#forecastNarrative',f.action||'基于公开行情的规则化情景');text('#baseCaseTarget',`${n(f.expectedRange?.[0],1)} — ${n(f.expectedRange?.[1],1)}`);text('#goldSupport',`${n(f.support,1)} USD/OZ`);text('#goldResistance',`${n(f.resistance,1)} USD/OZ`);renderForecastExtras(f,a.value);renderNews(data.news||{});renderExperts(data);renderInsights(data);drawDaily(a);drawIntraday(a);clock(); }
 let resizeTimer; addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(state.data){drawDaily(state.data.market.gold);drawIntraday(state.data.market.gold);}},200);});
