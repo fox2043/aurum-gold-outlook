@@ -148,3 +148,4 @@ button:hover,.source-link:hover{border-color:var(--gold);color:var(--gold)}
 .risk-box p{margin:5px 0 0;font-size:9px;color:#c7c5b9}
 
 footer{min-height:44px;display:grid;place-items:center;color:#6e7473;font-size:8px}
+.forecast-weight{display:grid;grid-template-columns:1fr 1px 1fr;gap:10px;align-items:center;padding:9px 20px;border-top:1px solid #ffffff10;border-bottom:1px solid #ffffff10;color:#bdb8ad;font:9px var(--mono)}.forecast-weight span:last-of-type{text-align:right}.forecast-weight b{color:var(--pale);font-weight:500}.forecast-weight i{height:19px;background:#ffffff1c}.forecast-weight small{grid-column:1/-1;color:var(--gold);font:8px var(--mono)}
