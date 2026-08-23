@@ -7,6 +7,17 @@ const path = require('path');
 const target = path.join(__dirname, '..', 'data', 'dashboard.json');
 const r1 = v => Math.round(v * 10) / 10;
 
+function expertSignal(updates) {
+  const views = Array.isArray(updates) ? updates : [];
+  const bull = /看涨|上行|上涨|走高|买入|加码|增持|上调|突破|反弹|利多|多头/;
+  const bear = /看跌|下行|下跌|走低|减持|下调|承压|回落|抛售|利空|空头|跌破/;
+  let positive = 0, negative = 0, neutral = 0;
+  views.forEach(item => { const value = `${item.view || ''} ${item.title || ''}`; const up = bull.test(value), down = bear.test(value); if (up && !down) positive += 1; else if (down && !up) negative += 1; else neutral += 1; });
+  const total = positive + negative + neutral;
+  const score = total ? Math.max(25, Math.min(75, 50 + (positive - negative) / total * 25)) : 50;
+  return { score: r1(score), votes: { positive, negative, neutral, total } };
+}
+
 function buildForecast(dashboard) {
   const gold = (dashboard.market && dashboard.market.gold) || {};
   const candles = (gold.candles || []).filter(c => Number.isFinite(c.close));
@@ -42,16 +53,23 @@ function buildForecast(dashboard) {
     action = '等待方向确认；关注区间两端再决策';
   }
 
-  let confidence = 58;
-  if (close > ma5) confidence += 6;
-  if (ma5 > ma20) confidence += 6;
-  if (Math.abs(mom5) > 0.01) confidence += 5;
-  if (close > ma20) confidence += 5;
-  confidence = Math.max(55, Math.min(86, confidence));
+  let marketScore = 50;
+  if (close > ma5) marketScore += 9;
+  if (ma5 > ma20) marketScore += 9;
+  if (Math.abs(mom5) > 0.01) marketScore += mom5 > 0 ? 7 : -7;
+  if (close > ma20) marketScore += 8; else marketScore -= 8;
+  marketScore = Math.max(25, Math.min(75, marketScore));
+  const experts = expertSignal(dashboard.weeklyExpertUpdates);
+  const combinedScore = r1(marketScore * 0.5 + experts.score * 0.5);
+  const confidence = Math.max(55, Math.min(86, Math.round(58 + Math.abs(combinedScore - 50) * 0.7)));
+  if (combinedScore >= 59) { bias = '综合偏多'; scenarios = { bull: 46, base: 39, bear: 15 }; action = '综合信号偏多；不追高，回踩关键均线企稳后再观察'; }
+  else if (combinedScore <= 41) { bias = '综合偏空'; scenarios = { bull: 15, base: 39, bear: 46 }; action = '综合信号偏空；反弹至压力区先控制风险再观察'; }
+  else { bias = '综合震荡待确认'; scenarios = { bull: 27, base: 46, bear: 27 }; action = '专家与量价综合信号未形成单边共识，等待区间突破确认'; }
 
-  const support = Math.min(low10, close - atr);
-  const resistance = Math.max(high10, close + atr * 0.2);
-  const expectedRange = [close - atr * 0.45, close + atr * 1.1];
+  const expertShift = (experts.score - 50) / 25 * atr * 0.25;
+  const support = Math.min(low10, close - atr) + Math.min(0, expertShift * 0.35);
+  const resistance = Math.max(high10, close + atr * 0.2) + Math.max(0, expertShift * 0.35);
+  const expectedRange = [close - atr * 0.45 + expertShift, close + atr * 1.1 + expertShift];
 
   const now = new Date();
   const beijing = new Date(now.getTime() + (8 * 60 + now.getTimezoneOffset()) * 60000);
@@ -64,6 +82,8 @@ function buildForecast(dashboard) {
     marketDate: last.date,
     horizon: '未来1—5个交易日',
     bias, confidence, scenarios,
+    weights: { expertViews: 50, marketAndMacroData: 50 },
+    signals: { marketScore: r1(marketScore), expertScore: experts.score, combinedScore, expertVotes: experts.votes },
     support: r1(support),
     resistance: r1(resistance),
     ma5: r1(ma5),
@@ -75,7 +95,7 @@ function buildForecast(dashboard) {
     triggerDown: `跌破 ${r1(support)} 且波动扩大`,
     invalidation: `${r1(ma20)} 附近为当前判断失效观察位`,
     drivers: ['美元指数与美债实际利率', 'COMEX成交与主力合约切换', '避险事件与央行购金预期'],
-    methodology: '日线MA5/MA20、5日动量、20日高低区间、平均日内波幅(ATR14)的规则化合成，每2小时基于最新日K重算',
+    methodology: '专家公开观点综合信号占50%；日线MA5/MA20、5日动量、20日高低区间、ATR14与宏观/资讯信号占50%。专家观点不足时保持中性50分。',
     disclaimer: '概率情景不是价格保证，不构成个性化投资建议。'
   };
 }
