@@ -46,6 +46,7 @@ jobs:
           " || { echo "intelligence still fresh (<6h)"; exit 0; }
           node scripts/refresh-gold-intelligence.js || echo "intelligence feed unavailable"
           node scripts/refresh-weekly-gold-research.js || echo "expert research feed unavailable"
+          node scripts/refresh-gold-forecast.js || echo "forecast refresh unavailable"
       - name: Commit refreshed market snapshot
         run: |
           git config user.name "aurum-signal-bot"
