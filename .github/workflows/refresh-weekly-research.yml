@@ -22,6 +22,7 @@ jobs:
           node-version: 20
       - run: node scripts/refresh-gold-intelligence.js || echo "intelligence feed unavailable"
       - run: node scripts/refresh-weekly-gold-research.js || echo "expert research feed unavailable"
+      - run: node scripts/refresh-gold-forecast.js || echo "forecast refresh unavailable"
       - run: |
           git config user.name "aurum-signal-bot"
           git config user.email "aurum-signal-bot@users.noreply.github.com"
