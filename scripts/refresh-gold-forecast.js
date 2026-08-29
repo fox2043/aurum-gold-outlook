@@ -58,7 +58,18 @@ function buildForecast(dashboard) {
   if (ma5 > ma20) marketScore += 9;
   if (Math.abs(mom5) > 0.01) marketScore += mom5 > 0 ? 7 : -7;
   if (close > ma20) marketScore += 8; else marketScore -= 8;
-  marketScore = Math.max(25, Math.min(75, marketScore));
+  // The data half of the model must react immediately to a material overnight
+  // selloff and to fresh policy headlines, rather than waiting for moving
+  // averages to roll over over several sessions.
+  const dailyChange = Number(gold.change || 0);
+  const headlines = (dashboard.news?.items || []).map(x => `${x.title || ''} ${x.summary || ''}`).join(' ');
+  const adverseHits = (headlines.match(/鹰派|加息|收益率.*上行|美元.*走强|黄金.*跳水|黄金.*大跌|跌破\s*4500|通胀.*顽固/g) || []).length;
+  let eventShockPenalty = 0;
+  if (dailyChange <= -1) eventShockPenalty += 8;
+  if (dailyChange <= -2) eventShockPenalty += 12;
+  if (dailyChange <= -3) eventShockPenalty += 10;
+  eventShockPenalty += Math.min(12, adverseHits * 4);
+  marketScore = Math.max(10, Math.min(90, marketScore - eventShockPenalty));
   const experts = expertSignal(dashboard.weeklyExpertUpdates);
   const combinedScore = r1(marketScore * 0.5 + experts.score * 0.5);
   const confidence = Math.max(55, Math.min(86, Math.round(58 + Math.abs(combinedScore - 50) * 0.7)));
@@ -83,7 +94,7 @@ function buildForecast(dashboard) {
     horizon: '未来1—5个交易日',
     bias, confidence, scenarios,
     weights: { expertViews: 50, marketAndMacroData: 50 },
-    signals: { marketScore: r1(marketScore), expertScore: experts.score, combinedScore, expertVotes: experts.votes },
+    signals: { marketScore: r1(marketScore), expertScore: experts.score, combinedScore, expertVotes: experts.votes, dailyChange: r1(dailyChange), adverseHeadlineCount: adverseHits, eventShockPenalty },
     support: r1(support),
     resistance: r1(resistance),
     ma5: r1(ma5),
@@ -95,7 +106,7 @@ function buildForecast(dashboard) {
     triggerDown: `跌破 ${r1(support)} 且波动扩大`,
     invalidation: `${r1(ma20)} 附近为当前判断失效观察位`,
     drivers: ['美元指数与美债实际利率', 'COMEX成交与主力合约切换', '避险事件与央行购金预期'],
-    methodology: '专家公开观点综合信号占50%；日线MA5/MA20、5日动量、20日高低区间、ATR14与宏观/资讯信号占50%。专家观点不足时保持中性50分。',
+    methodology: '专家公开观点综合信号占50%；日线MA5/MA20、5日动量、20日高低区间、ATR14与宏观/资讯信号占50%。若单日急跌或出现鹰派、加息、收益率上行等高影响利空，计入数据端事件冲击扣分；专家观点不足时保持中性50分。',
     disclaimer: '概率情景不是价格保证，不构成个性化投资建议。'
   };
 }
