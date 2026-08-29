@@ -78,9 +78,16 @@ function buildForecast(dashboard) {
   else { bias = '综合震荡待确认'; scenarios = { bull: 27, base: 46, bear: 27 }; action = '专家与量价综合信号未形成单边共识，等待区间突破确认'; }
 
   const expertShift = (experts.score - 50) / 25 * atr * 0.25;
-  const support = Math.min(low10, close - atr) + Math.min(0, expertShift * 0.35);
-  const resistance = Math.max(high10, close + atr * 0.2) + Math.max(0, expertShift * 0.35);
-  const expectedRange = [close - atr * 0.45 + expertShift, close + atr * 1.1 + expertShift];
+  const shockMode = eventShockPenalty >= 20;
+  const support = shockMode
+    ? Math.min(low10, close - atr * 1.15)
+    : Math.min(low10, close - atr) + Math.min(0, expertShift * 0.35);
+  const resistance = shockMode
+    ? Math.min(high10, close + atr * 0.55)
+    : Math.max(high10, close + atr * 0.2) + Math.max(0, expertShift * 0.35);
+  const expectedRange = shockMode
+    ? [close - atr * 0.85 + expertShift * 0.35, close + atr * 0.45 + expertShift * 0.35]
+    : [close - atr * 0.45 + expertShift, close + atr * 1.1 + expertShift];
 
   const now = new Date();
   const beijing = new Date(now.getTime() + (8 * 60 + now.getTimezoneOffset()) * 60000);
