@@ -1,151 +1,83 @@
-// Recompute the rule-based 1-5 day gold outlook from the latest 30-day daily candles.
-// Runs on GitHub Actions whenever goldForecast is older than 2 hours (see refresh-cmb-gold.yml).
 'use strict';
 const fs = require('fs');
 const path = require('path');
-
+const q = require('../data-quality');
 const target = path.join(__dirname, '..', 'data', 'dashboard.json');
-const r1 = v => Math.round(v * 10) / 10;
+const round = x => Math.round(x * 10) / 10;
+const clamp = x => Math.max(0, Math.min(100, x));
 
-function expertSignal(updates) {
-  const views = Array.isArray(updates) ? updates : [];
-  const bull = /看涨|上行|上涨|走高|买入|加码|增持|上调|突破|反弹|利多|多头/;
-  const bear = /看跌|下行|下跌|走低|减持|下调|承压|回落|抛售|利空|空头|跌破/;
-  let positive = 0, negative = 0, neutral = 0;
-  views.forEach(item => { const value = `${item.view || ''} ${item.title || ''}`; const up = bull.test(value), down = bear.test(value); if (up && !down) positive += 1; else if (down && !up) negative += 1; else neutral += 1; });
-  const total = positive + negative + neutral;
-  const score = total ? Math.max(25, Math.min(75, 50 + (positive - negative) / total * 25)) : 50;
-  return { score: r1(score), votes: { positive, negative, neutral, total } };
-}
-
-function buildForecast(dashboard) {
-  const gold = (dashboard.market && dashboard.market.gold) || {};
-  const candles = (gold.candles || []).filter(c => Number.isFinite(c.close));
-  if (candles.length < 20) throw Error('not enough daily candles for forecast');
-  const rows = candles.slice(-30);
-  const closes = rows.map(c => c.close);
-  const last = rows[rows.length - 1];
-  const close = Number.isFinite(gold.value) ? gold.value : last.close;
-
-  const ma = (arr, w) => arr.slice(-w).reduce((s, v) => s + v, 0) / Math.min(w, arr.length);
-  const ma5 = ma(closes, 5), ma20 = ma(closes, 20);
-  const atr = rows.slice(-14).reduce((s, c) => s + (c.high - c.low), 0) / Math.min(14, rows.length);
-  const high10 = Math.max(...rows.slice(-10).map(c => c.high));
-  const low10 = Math.min(...rows.slice(-10).map(c => c.low));
-  const mom5 = close / closes[closes.length - 6] - 1;
-
-  // --- regime rules ---
-  let bias, scenarios, action;
-  if (close > ma5 && ma5 > ma20 && mom5 > 0.008) {
-    bias = '趋势偏多'; scenarios = { bull: 48, base: 37, bear: 15 };
-    action = '顺势持有为主；不追高，回踩 MA5 企稳可加观察';
-  } else if (close > ma20 && mom5 > 0) {
-    bias = '偏多但需确认'; scenarios = { bull: 38, base: 42, bear: 20 };
-    action = '不追高；回踩MA5附近企稳后再观察';
-  } else if (close > ma20) {
-    bias = '高位震荡整理'; scenarios = { bull: 22, base: 56, bear: 22 };
-    action = '区间思路对待；靠近区间上沿谨慎、下沿再评估';
-  } else if (close < ma20 && mom5 < -0.008) {
-    bias = '趋势承压'; scenarios = { bull: 16, base: 38, bear: 46 };
-    action = '以防守为主；反弹到 MA20 附近先减风险再观察';
-  } else {
-    bias = '中性观望'; scenarios = { bull: 24, base: 50, bear: 26 };
-    action = '等待方向确认；关注区间两端再决策';
-  }
-
-  let marketScore = 50;
-  if (close > ma5) marketScore += 9;
-  if (ma5 > ma20) marketScore += 9;
-  if (Math.abs(mom5) > 0.01) marketScore += mom5 > 0 ? 7 : -7;
-  if (close > ma20) marketScore += 8; else marketScore -= 8;
-  // The data half of the model must react immediately to a material overnight
-  // selloff and to fresh policy headlines, rather than waiting for moving
-  // averages to roll over over several sessions.
-  const dailyChange = Number(gold.change || 0);
-  const headlines = (dashboard.news?.items || []).map(x => `${x.title || ''} ${x.summary || ''}`).join(' ');
-  const adverseHits = (headlines.match(/鹰派|加息|收益率.*上行|美元.*走强|黄金.*跳水|黄金.*大跌|跌破\s*4500|通胀.*顽固/g) || []).length;
-  let eventShockPenalty = 0;
-  if (dailyChange <= -1) eventShockPenalty += 8;
-  if (dailyChange <= -2) eventShockPenalty += 12;
-  if (dailyChange <= -3) eventShockPenalty += 10;
-  eventShockPenalty += Math.min(12, adverseHits * 4);
-  marketScore = Math.max(10, Math.min(90, marketScore - eventShockPenalty));
-  const experts = expertSignal(dashboard.weeklyExpertUpdates);
-  const combinedScore = r1(marketScore * 0.5 + experts.score * 0.5);
-  const confidence = Math.max(55, Math.min(86, Math.round(58 + Math.abs(combinedScore - 50) * 0.7)));
-  if (combinedScore >= 59) { bias = '综合偏多'; scenarios = { bull: 46, base: 39, bear: 15 }; action = '综合信号偏多；不追高，回踩关键均线企稳后再观察'; }
-  else if (combinedScore <= 41) { bias = '综合偏空'; scenarios = { bull: 15, base: 39, bear: 46 }; action = '综合信号偏空；反弹至压力区先控制风险再观察'; }
-  else { bias = '综合震荡待确认'; scenarios = { bull: 27, base: 46, bear: 27 }; action = '专家与量价综合信号未形成单边共识，等待区间突破确认'; }
-
-  const expertShift = (experts.score - 50) / 25 * atr * 0.25;
-  const shockMode = eventShockPenalty >= 20;
-  const support = shockMode
-    ? Math.min(low10, close - atr * 1.15)
-    : Math.min(low10, close - atr) + Math.min(0, expertShift * 0.35);
-  const resistance = shockMode
-    ? Math.min(high10, close + atr * 0.55)
-    : Math.max(high10, close + atr * 0.2) + Math.max(0, expertShift * 0.35);
-  const expectedRange = shockMode
-    ? [close - atr * 0.85 + expertShift * 0.35, close + atr * 0.45 + expertShift * 0.35]
-    : [close - atr * 0.45 + expertShift, close + atr * 1.1 + expertShift];
-
-  const now = new Date();
-  const beijing = new Date(now.getTime() + (8 * 60 + now.getTimezoneOffset()) * 60000);
-  const pad = v => String(v).padStart(2, '0');
-  const asOf = `${beijing.getFullYear()}-${pad(beijing.getMonth() + 1)}-${pad(beijing.getDate())} ${pad(beijing.getHours())}:${pad(beijing.getMinutes())}:${pad(beijing.getSeconds())}`;
-
+function buildForecast(dashboard, now = Date.now()) {
+  const gold = dashboard.market.gold;
+  const rows = [...new Map((gold.candles || []).filter(c =>
+    [c.open,c.close,c.high,c.low].every(x => Number.isFinite(x) && x > 0) &&
+    c.high >= Math.max(c.open,c.close) && c.low <= Math.min(c.open,c.close) && q.stamp(c.date) <= now
+  ).map(c => [c.date,c])).values()].sort((a,b) => a.date.localeCompare(b.date));
+  if (rows.length < 20) throw Error('至少需要20根有效同品种日K');
+  const close = gold.value, last = rows.at(-1);
+  if (!Number.isFinite(close) || close <= 0) throw Error('缺少有效报价');
+  const mean = n => rows.slice(-n).reduce((s,c) => s+c.close,0)/n;
+  const ma5 = mean(5), ma20 = mean(20);
+  // True range includes overnight gaps against the previous close.
+  const ranges = rows.slice(1).map((c,i) => Math.max(c.high-c.low, Math.abs(c.high-rows[i].close), Math.abs(c.low-rows[i].close)));
+  const atr = ranges.slice(-14).reduce((s,x)=>s+x,0)/14;
+  const mom5 = close/rows.at(-6).close-1;
+  const dailyChange = Number(gold.change) || 0;
+  const marketScore = clamp(50 + (close > ma5 ? 8 : -8) + (ma5 > ma20 ? 8 : -8) + (close > ma20 ? 8 : -8) + Math.max(-12, Math.min(12,mom5*600)) + Math.max(-18,Math.min(18,dailyChange*6)));
+  const experts = q.experts(dashboard.weeklyExpertUpdates,now);
+  const combinedScore = (marketScore + experts.score)/2;
+  const issues = [];
+  if (!q.fresh(gold.quoteTime, .25, now)) issues.push('报价超过15分钟，休市或延迟需核对');
+  if (!q.fresh(last.date, 96, now)) issues.push('日K超过4日未更新');
+  if (dashboard.market.sourceQuality?.status === 'disagreement') issues.push('同品种报价出现冲突，暂停价格预测');
+  if (experts.status === 'insufficient') issues.push('缺少至少两家独立机构的近7日短期观点，专家部分证据不足');
+  const blocked = !q.fresh(gold.quoteTime, 72, now) || !q.fresh(last.date, 96, now) || dashboard.market.sourceQuality?.status === 'disagreement';
+  const shift = (combinedScore-50)/50*atr, width = atr*Math.sqrt(5);
+  const support = Math.min(...rows.slice(-10).map(c=>c.low),close-atr);
+  const resistance = Math.max(...rows.slice(-10).map(c=>c.high),close+atr);
   return {
-    asOf,
-    computedAt: now.toISOString(),
-    marketDate: last.date,
-    horizon: '未来1—5个交易日',
-    bias, confidence, scenarios,
-    weights: { expertViews: 50, marketAndMacroData: 50 },
-    signals: { marketScore: r1(marketScore), expertScore: experts.score, combinedScore, expertVotes: experts.votes, dailyChange: r1(dailyChange), adverseHeadlineCount: adverseHits, eventShockPenalty },
-    support: r1(support),
-    resistance: r1(resistance),
-    ma5: r1(ma5),
-    ma20: r1(ma20),
-    atr: r1(atr),
-    expectedRange: [r1(expectedRange[0]), r1(expectedRange[1])],
-    action,
-    triggerUp: `有效突破 ${r1(resistance)} 且日线收稳`,
-    triggerDown: `跌破 ${r1(support)} 且波动扩大`,
-    invalidation: `${r1(ma20)} 附近为当前判断失效观察位`,
-    drivers: ['美元指数与美债实际利率', 'COMEX成交与主力合约切换', '避险事件与央行购金预期'],
-    methodology: '专家公开观点综合信号占50%；日线MA5/MA20、5日动量、20日高低区间、ATR14与宏观/资讯信号占50%。若单日急跌或出现鹰派、加息、收益率上行等高影响利空，计入数据端事件冲击扣分；专家观点不足时保持中性50分。',
-    disclaimer: '概率情景不是价格保证，不构成个性化投资建议。'
+    modelVersion:'source-audit-v2', computedAt:new Date(now).toISOString(), asOf:new Date(now).toISOString(),
+    marketDate:last.date, quoteTime:gold.quoteTime, anchorPrice:close, horizon:'未来5个交易日',
+    status:blocked?'suspended':issues.length?'limited':'available', issues,
+    bias:blocked?'数据过期 · 暂停预测':combinedScore>=59?'综合偏多':combinedScore<=41?'综合偏空':'综合震荡待确认',
+    confidence:null, scenarios:{}, weights:{expertViews:50,marketAndMacroData:50},
+    signals:{marketScore:round(marketScore),expertScore:round(experts.score),combinedScore:round(combinedScore),expertVotes:experts.votes,dailyChange:round(dailyChange)},
+    expertEvidence:experts.accepted, ma5:round(ma5),ma20:round(ma20),atr:round(atr),support:round(support),resistance:round(resistance),
+    expectedRange:blocked?null:[round(Math.max(.01,close+shift-width)),round(close+shift+width)], target:blocked?null:round(close+shift),
+    action:blocked?'行情或日K过期，等待有效源恢复后重新计算。':'5日波动情景，起算价 '+round(close)+' USD/OZ；'+(issues.length?issues.join('；'):'来源时效检查通过')+'。',
+    triggerUp:'日收盘突破 '+round(resistance)+' 后复核', triggerDown:'日收盘跌破 '+round(support)+' 后复核',
+    invalidation:'发生重大事件或价格脱离情景区间时，原预测失效并重新评估。',
+    methodology:'专家50%：仅近7日、具名机构、明确短期方向的公开转述，按时效衰减、每机构一票；资料缺失为中性。量价50%：MA5/20、5日动量和当日涨跌；真实波幅ATR包含跳空。尚未接入实时美元/实际利率因子，新闻只供阅读，不以标题关键词生成宏观分数。区间是5日波动情景，并非经校准的命中概率。',
+    disclaimer:'预测仅做参考，不作为实际投资建议。'
   };
 }
 
-function syncAnalysis(dashboard, f) {
-  const a = dashboard.analysis || (dashboard.analysis = {});
-  const close = f.expectedRange[0] + f.atr * 0.45;
-  a.goldBias = f.bias;
-  a.bias = f.bias.includes('偏多') || f.bias.includes('趋势偏多') ? '偏多' : f.bias.includes('承压') ? '偏空' : '中性';
-  a.scenario = { ...f.scenarios };
-  a.invalidation = f.invalidation;
-  const list = Array.isArray(a.conclusions) ? a.conclusions : [];
-  const goldRow = {
-    rank: 1,
-    label: '黄金趋势状态',
-    verdict: `现价${close > f.ma20 ? '高于' : '低于'}20日均值 ${f.ma20}，${f.bias}（置信 ${f.confidence}%）`,
-    confidence: f.confidence,
-    tone: close > f.ma20 ? 'gold' : 'negative',
-    trigger: `触发：${f.triggerUp}`,
-    invalidation: `失效：${f.invalidation}`
-  };
-  const idx = list.findIndex(x => x.label && x.label.includes('黄金'));
-  if (idx >= 0) list[idx] = goldRow; else list.unshift(goldRow);
-  a.conclusions = list.slice(0, 4);
+function track(d,f) {
+  const rows=d.market.gold.candles||[], today=f.computedAt.slice(0,10);
+  const archive=d.forecastArchive||[];
+  for (const a of archive) {
+    if(a.result) continue;
+    const future=rows.filter(c=>c.date>a.issuedDate && c.date<today).sort((x,y)=>x.date.localeCompare(y.date));
+    if(future.length>=5) {
+      const actual=future[4].close;
+      a.result={date:future[4].date,actual,absoluteError:Math.abs(actual-a.target),naiveError:Math.abs(actual-a.anchorPrice),inside:actual>=a.range[0]&&actual<=a.range[1]};
+    }
+  }
+  if(f.status!=='suspended' && !archive.some(a=>a.issuedDate===today)) archive.push({issuedDate:today,issuedAt:f.computedAt,target:f.target,anchorPrice:f.anchorPrice,range:f.expectedRange,version:f.modelVersion,status:f.status});
+  d.forecastArchive=archive.slice(-365);
+  const scored=archive.filter(a=>a.result), count=scored.length;
+  d.forecastEvaluation={count,mae:count?round(scored.reduce((s,a)=>s+a.result.absoluteError,0)/count):null,naiveMae:count?round(scored.reduce((s,a)=>s+a.result.naiveError,0)/count):null,note:count?'前瞻留档的5日结果；同时比较价格不变基线。':'尚无成熟的前瞻验证样本，暂不能声称预测准确率提升。'};
 }
-
-(async () => {
-  const dashboard = JSON.parse(fs.readFileSync(target, 'utf8'));
-  const forecast = buildForecast(dashboard);
-  dashboard.goldForecast = forecast;
-  syncAnalysis(dashboard, forecast);
-  dashboard.deployment = { ...(dashboard.deployment || {}), forecastUpdatedAt: forecast.computedAt };
-  fs.writeFileSync(target, JSON.stringify(dashboard) + '\n');
-  console.log(`gold forecast refreshed @ ${forecast.asOf}: ${forecast.bias} conf=${forecast.confidence} range=[${forecast.expectedRange.join(', ')}] support=${forecast.support} resistance=${forecast.resistance}`);
-})().catch(error => { console.error(error); process.exit(1); });
+if(require.main===module) {
+  try {
+    const d=JSON.parse(fs.readFileSync(target,'utf8')), f=buildForecast(d);
+    d.goldForecast=f; track(d,f);
+    d.analysis={...(d.analysis||{}),goldBias:f.bias,invalidation:f.invalidation,conclusions:[
+      {label:'预测方法',verdict:f.bias,trigger:f.methodology},
+      {label:'输入质量',verdict:f.issues.length?f.issues.join('；'):'来源时间有效',trigger:'报价 '+f.quoteTime+'；日K '+f.marketDate},
+      {label:'预测效果核验',verdict:d.forecastEvaluation.note,trigger:'已完成 '+d.forecastEvaluation.count+' 个样本；模型绝对误差 '+(d.forecastEvaluation.mae??'待积累')+'；价格不变基线 '+(d.forecastEvaluation.naiveMae??'待积累')}
+    ]};
+    fs.writeFileSync(target,JSON.stringify(d)+'\n');
+    console.log(JSON.stringify({bias:f.bias,status:f.status,issues:f.issues,evaluation:d.forecastEvaluation}));
+  } catch(e) {console.error(e);process.exitCode=1;}
+}
+module.exports={buildForecast,track};
