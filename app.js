@@ -178,7 +178,6 @@ function renderForecastExtras(f, price) {
   if (win && f.expectedRange) { win.style.left = pos(f.expectedRange[0]) + '%'; win.style.right = (100 - pos(f.expectedRange[1])) + '%'; }
   const stamp = f.computedAt ? `随有效快照重算 · ${new Date(f.computedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}` : '每2小时更新';
   text('#forecastDate', `${f.marketDate || '--'} · ${stamp}`);
-  text('#confidence',state.data?.forecastEvaluation?.count ? '核验中' : '待验证');
   text('#expertWeight', `${f.weights?.expertViews ?? 50}%`);
   text('#marketWeight', `${f.weights?.marketAndMacroData ?? 50}%`);
   const signal = f.signals || {}, votes = signal.expertVotes || {};
