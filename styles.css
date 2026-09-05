@@ -152,3 +152,8 @@ footer{min-height:44px;display:grid;place-items:center;color:#6e7473;font-size:8
 
 /* Presentation readability pass: keep the command-center density, enlarge secondary text. */
 .brand small,.clock small,.status-line,.panel-head small,.kpi small,.kpi p{font-size:10px}.source-link,button{font-size:9px}.chart-label,.chart-foot small,.chart-timeline,.intraday-meta{font-size:11px}.news-item time{font-size:11px}.news-item h3{font-size:13px}.news-item p{font-size:11px;line-height:1.5}.news-item span{font-size:10px}.expert-intro{font-size:12px;line-height:1.65}.expert-card small,.expert-card footer{font-size:10px}.expert-card p{font-size:13px;line-height:1.75}.signal small{font-size:9px}.signal strong{font-size:12px}.signal p{font-size:10px;line-height:1.6}.risk-box small{font-size:9px}.risk-box p{font-size:10px;line-height:1.55}.forecast-weight{font-size:10px}.forecast-weight small{font-size:9px}footer{font-size:9px}
+/* Source timestamps remain visible and readable on the monitoring screen. */
+.source-audit { margin: 12px 0 20px; padding: 14px 18px; border: 1px solid #51442c; color: #ddd2bc; background: #111315; font-size: 14px; line-height: 1.8; }
+.source-audit summary { cursor: pointer; color: #f2cc7c; font-size: 15px; }
+.source-audit a { color: #e6bd6c; }
+.source-audit p { margin: 8px 0; }
