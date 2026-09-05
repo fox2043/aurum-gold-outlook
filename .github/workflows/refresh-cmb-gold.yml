@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: gold-snapshot
+  group: gold-data-writer
   cancel-in-progress: false
 
 jobs:
@@ -24,21 +24,13 @@ jobs:
         run: node scripts/refresh-market-snapshot.js
       - name: Refresh 30-day daily and 24h intraday history
         run: node scripts/refresh-gold-history.js || echo "history refresh unavailable; retain prior series."
-      - name: Refresh modelled forecast when older than 2 hours
-        run: |
-          node -e "
-            const d = require('./data/dashboard.json');
-            const last = new Date(d.goldForecast?.computedAt || d.goldForecast?.asOf || 0).getTime() || 0;
-            process.exit(Date.now() - last > 2 * 3600 * 1000 ? 0 : 1);
-          " || { echo "forecast still fresh (<2h)"; exit 0; }
-          node scripts/refresh-gold-forecast.js || echo "forecast refresh unavailable"
       - name: Try to refresh CMB public quote
         run: node scripts/refresh-cmb-gold.js || echo "CMB endpoint unavailable from this runner; retain prior CMB snapshot."
       - name: Refresh intelligence and expert views when older than 6 hours
         run: |
           node -e "
             const d = require('./data/dashboard.json');
-            const last = Math.max(
+            const last = Math.min(
               new Date(d.news?.updatedAt || 0).getTime() || 0,
               new Date(d.deployment?.expertWeeklyUpdatedAt || 0).getTime() || 0
             );
@@ -47,6 +39,8 @@ jobs:
           node scripts/refresh-gold-intelligence.js || echo "intelligence feed unavailable"
           node scripts/refresh-weekly-gold-research.js || echo "expert research feed unavailable"
           node scripts/refresh-gold-forecast.js || echo "forecast refresh unavailable"
+      - name: Recompute forecast from this snapshot
+        run: node scripts/refresh-gold-forecast.js
       - name: Commit refreshed market snapshot
         run: |
           git config user.name "aurum-signal-bot"
