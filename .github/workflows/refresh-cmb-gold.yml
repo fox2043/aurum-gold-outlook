@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -51,5 +53,6 @@ jobs:
             git push
           else
             git rebase --abort || true
-            echo "concurrent update conflict; snapshot retried in next cycle"
+            echo "concurrent update conflict; snapshot was NOT published"
+            exit 1
           fi
