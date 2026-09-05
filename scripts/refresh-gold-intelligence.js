@@ -30,7 +30,7 @@ async function fromJin10() {
     seen.add(body.slice(0, 50));
     const time = (ev.time || '').trim(); // "2026-08-14 15:27:22"
     picked.push({
-      category: '黄金', sentiment: 'neutral',
+      category: '黄金', sentiment: 'unclassified', publishedAt: time ? time.replace(' ', 'T') + '+08:00' : null,
       time: time ? `${time.slice(5, 7)}-${time.slice(8, 10)} ${time.slice(11, 16)}` : '最新',
       title: body.length > 76 ? `${body.slice(0, 76)}…` : body,
       summary: '金十数据实时快讯 · 每 6 小时自动聚合，点击可核对原文。',
@@ -50,7 +50,7 @@ async function fromGoogleNews() {
   const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 9).map(([, part]) => {
     const field = n => strip((part.match(new RegExp(`<${n}>([\\s\\S]*?)</${n}>`)) || [, ''])[1]);
     const date = field('pubDate');
-    return { category: '黄金', sentiment: 'neutral', time: date ? new Date(date).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }).replace('/', '-') : '最新', title: field('title'), summary: '每 6 小时更新的公开黄金资讯，点击原文核验。', source: 'Google News 公开聚合', url: field('link') };
+    return { category: '黄金', sentiment: 'unclassified', publishedAt: date && Number.isFinite(Date.parse(date)) ? new Date(date).toISOString() : null, time: date ? new Date(date).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }).replace('/', '-') : '日期缺失', title: field('title'), summary: '每 6 小时检查公开黄金资讯，聚合链接的国内可达性可能受限。', source: 'Google News 公开聚合', url: field('link') };
   }).filter(x => x.title && x.url);
   if (!items.length) throw Error('no google items');
   return items;
@@ -58,7 +58,7 @@ async function fromGoogleNews() {
 
 (async () => {
   // Merge both sources when available (jin10 realtime + Google News breadth); fall back to either one.
-  const results = await Promise.allSettled([fromJin10(), fromGoogleNews()]);
+  const results = await Promise.allSettled([fromJin10(), fromGoogleNews(), require('./cnfin-source').news()]);
   const merged = [];
   const seen = new Set();
   for (const r of results) {
@@ -67,15 +67,17 @@ async function fromGoogleNews() {
       const key = item.title.slice(0, 40);
       if (seen.has(key)) continue;
       seen.add(key);
-      merged.push(item);
+      if (require('../data-quality').fresh(item.publishedAt, 48)) merged.push(item);
     }
   }
   if (!merged.length) throw Error('no gold intelligence from any source');
   const providers = [];
   if (results[0].status === 'fulfilled') providers.push('金十数据实时快讯');
   if (results[1].status === 'fulfilled') providers.push('Google News');
+  if (results[2].status === 'fulfilled') providers.push('新华财经');
   const dashboard = JSON.parse(fs.readFileSync(target, 'utf8'));
-  dashboard.news = { ...(dashboard.news || {}), source: `${providers.join(' + ')} · 黄金相关`, updatedAt: new Date().toISOString(), items: merged.slice(0, 9) };
+  merged.sort((a,b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+  dashboard.news = { ...(dashboard.news || {}), source: `${providers.join(' + ')} · 黄金相关`, updatedAt: new Date().toISOString(), latestPublishedAt: merged[0].publishedAt, items: merged.slice(0, 9) };
   fs.writeFileSync(target, JSON.stringify(dashboard) + '\n');
   console.log(`Gold intelligence refreshed via ${providers.join(' + ')}: ${merged.length} items`);
 })().catch(error => { console.error(error); process.exit(1); });
