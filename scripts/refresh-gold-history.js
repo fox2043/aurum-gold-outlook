@@ -46,6 +46,7 @@ async function fetchKlines(klt) {
   const dashboard = JSON.parse(fs.readFileSync(target, 'utf8'));
   const gold = dashboard.market.gold;
   const log = [];
+  let dailyUpdated = false;
 
   // ---- 30-day daily candles ----
   try {
@@ -54,6 +55,8 @@ async function fetchKlines(klt) {
     if (last30.length >= 20) {
       gold.candles = last30;
       gold.series = last30.map(c => c.close);
+      dailyUpdated = true;
+      gold.historyProvider = '东方财富 · XAU 日K';
       log.push(`daily=${last30.length} bars (last ${last30[last30.length - 1].date} close ${last30[last30.length - 1].close})`);
     } else log.push(`daily skipped: ${last30.length} bars`);
   } catch (e) {
@@ -69,6 +72,8 @@ async function fetchKlines(klt) {
       const bars = JSON.parse(m[1]).slice(-30).map(b => ({ date: b.date, open: Number(b.open), high: Number(b.high), low: Number(b.low), close: Number(Number(b.close).toFixed(2)) }));
       if (bars.length >= 20) {
         gold.candles = bars; gold.series = bars.map(c => c.close);
+        dailyUpdated = true;
+        gold.historyProvider = '新浪财经 · XAU 日K';
         log.push(`daily fallback=sina ${bars.length} bars (last ${bars[bars.length - 1].date})`);
       } else log.push(`daily fallback skipped: ${bars.length} bars`);
     } catch (e2) { log.push(`daily fallback failed: ${e2.message}`); }
@@ -95,8 +100,9 @@ async function fetchKlines(klt) {
     if (gold.intradaySymbol !== 'XAU' && Array.isArray(gold.intraday) && gold.intraday.length) { gold.intraday = []; log.push('legacy non-XAU intraday cleared'); }
   }
 
-  gold.historyUpdatedAt = new Date().toISOString();
-  gold.historyProvider = '东方财富/新浪 · 伦敦现货黄金 XAU（日K + 24h 5分钟线）';
+  gold.historyCheckedAt = new Date().toISOString();
+  if (dailyUpdated) gold.historyUpdatedAt = gold.historyCheckedAt;
+  gold.historyStatus = dailyUpdated ? 'available' : 'refresh-failed';
   dashboard.market.updatedAt = new Date().toISOString();
   fs.writeFileSync(target, `${JSON.stringify(dashboard)}\n`, 'utf8');
   console.log(`gold history refreshed: ${log.join(' | ')}`);
