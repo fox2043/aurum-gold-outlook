@@ -17,7 +17,7 @@ async function fromGoogleNews() {
   const updates = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 6).map(([, item]) => {
     const get = name => strip((item.match(new RegExp(`<${name}>([\\s\\S]*?)<\\/${name}>`)) || [, ''])[1]);
     const title = get('title'), link = get('link'), date = get('pubDate');
-    return { institution: '本周公开研究动态', expert: '黄金市场研究', date: date ? new Date(date).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10), view: title.length > 110 ? `${title.slice(0, 110)}…` : title, url: link, source: 'Google News 聚合 · 请打开原文核验' };
+    return { institution: (title.match(/高盛|瑞银|摩根大通|摩根士丹利|花旗|美银|汇丰|渣打|法兴|世界黄金协会|中金公司|中信证券|华泰证券/)||[])[0] || '未识别具名机构', expert: '媒体转述 · 请核对原文', publishedAt: date && Number.isFinite(Date.parse(date)) ? new Date(date).toISOString() : null, date: date && Number.isFinite(Date.parse(date)) ? new Date(date).toISOString().slice(0, 10) : '日期缺失', view: title, url: link, source: 'Google News 聚合 · 国内访问可能受限' };
   }).filter(x => x.view && x.url);
   if (!updates.length) throw Error('no google research items');
   return updates;
@@ -44,10 +44,11 @@ async function fromJin10() {
     seen.add(body.slice(0, 50));
     const time = (ev.time || '').trim();
     picked.push({
-      institution: strip(d.source) || '市场机构快讯',
+      institution: (body.match(/高盛|瑞银|摩根大通|摩根士丹利|花旗|美银|汇丰|渣打|法兴|世界黄金协会|中金公司|中信证券|华泰证券/)||[])[0] || '未识别具名机构',
       expert: '机构黄金观点',
-      date: time ? time.slice(0, 10) : new Date().toISOString().slice(0, 10),
-      view: body.length > 110 ? `${body.slice(0, 110)}…` : body,
+      date: time ? time.slice(0, 10) : '日期缺失',
+      publishedAt: time ? time.replace(' ', 'T') + '+08:00' : null,
+      view: body.slice(0, 500),
       url: `https://flash.jin10.com/detail/${ev.id}`,
       source: '金十数据 · 请打开原文核验'
     });
@@ -58,12 +59,16 @@ async function fromJin10() {
 }
 
 (async () => {
-  let updates, providerNote;
-  try { updates = await fromGoogleNews(); providerNote = 'Google News 预测聚合'; }
-  catch (e1) {
-    console.warn(`google research feed unavailable: ${e1.message}; fallback to jin10`);
-    updates = await fromJin10(); providerNote = '金十数据机构快讯';
-  }
+  const results = await Promise.allSettled([fromJin10(), fromGoogleNews(), require('./cnfin-source').experts()]);
+  const quality = require('../data-quality');
+  const seen = new Set();
+  const updates = results.flatMap(r => r.status === 'fulfilled' ? r.value : []).filter(x => {
+    const key = x.view.replace(/\s/g, '').slice(0,80);
+    if (seen.has(key) || x.institution === '未识别具名机构' || !quality.fresh(x.publishedAt,168)) return false;
+    seen.add(key); return /黄金|金价|伦敦金|贵金属/.test(x.view);
+  }).sort((a,b) => Date.parse(b.publishedAt)-Date.parse(a.publishedAt)).slice(0,12);
+  if (results.every(r => r.status === 'rejected')) throw Error('所有专家资讯源获取失败');
+  const providerNote = '新华财经 / 金十 / Google News 具名机构媒体转述；非机构原始研报';
   const dashboard = JSON.parse(fs.readFileSync(target, 'utf8'));
   dashboard.weeklyExpertUpdates = updates;
   dashboard.deployment = { ...(dashboard.deployment || {}), expertWeeklyUpdatedAt: new Date().toISOString(), expertProvider: providerNote };
