@@ -1,19 +1,53 @@
 const $ = s => document.querySelector(s);
 const state = { data: null };
-const n = (v, d = 2) => Number.isFinite(Number(v)) ? Number(v).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d }) : '--';
-const pct = v => Number.isFinite(Number(v)) ? `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%` : '--';
+const n = (v, d = 2) => v != null && v !== '' && Number.isFinite(Number(v)) ? Number(v).toLocaleString('zh-CN', { minimumFractionDigits: d, maximumFractionDigits: d }) : '--';
+const pct = v => v != null && v !== '' && Number.isFinite(Number(v)) ? `${Number(v) >= 0 ? '+' : ''}${Number(v).toFixed(2)}%` : '--';
 const tone = v => Number(v) > 0 ? 'positive' : Number(v) < 0 ? 'negative' : 'neutral';
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 const text = (id, value) => { const el = $(id); if (el) el.textContent = value; };
 const fmtTime = iso => { const d = new Date(iso); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; };
-function clock() { text('#clock', new Date().toLocaleTimeString('zh-CN', { hour12:false })); if (state.data?.market.liveUpdatedAt) text('#freshness', `联网报价 · ${Math.max(0, Math.round((Date.now() - new Date(state.data.market.liveUpdatedAt)) / 1000))} 秒前`); }
+function clock() {
+  text('#clock',new Date().toLocaleTimeString('zh-CN',{hour12:false,timeZone:'Asia/Shanghai'}));
+  if (!state.data) return;
+  const m=state.data.market, q=GoldQuality, recent=q.fresh(m.gold.quoteTime,.25);
+  text('#freshness',(recent?'报价源时间 ':'延迟/休市待核对 · 源时间 ')+(m.gold.quoteTime||'未知'));
+  text('#systemState',recent?'公开报价时效有效':'报价非实时 / 等待源更新');
+  text('#goldVerification',m.sourceQuality?.status==='matched'?'腾讯/新浪 XAU 最近核对一致':m.sourceQuality?.status==='disagreement'?'XAU报价冲突 · 暂停预测':'XAU仅一路有效 · 待交叉核对');
+  const d=state.data, issues=[];
+  if(!recent) issues.push('行情延迟或休市');
+  if(m.sourceQuality?.status==='disagreement') issues.push('同品种报价冲突');
+  if(!q.fresh(d.news?.latestPublishedAt,48)) issues.push('新闻缺少近48小时内容');
+  if(!q.fresh(d.deployment?.expertWeeklyUpdatedAt,6)) issues.push('专家源检查超时');
+  text('#sourceSummary','数据源核验 · '+(issues.join(' / ')||'查看报价口径与预测依据'));
+}
+function liveAsset(f,old,provider) {return {...GoldQuality.quote(f,old),provider};}
+function addPoint(asset) {
+  if(!GoldQuality.fresh(asset.quoteTime,24)) return;
+  const time=new Date(GoldQuality.stamp(asset.quoteTime)).toISOString();
+  asset.intraday=[...(asset.intraday||[]).filter(x=>x.time!==time && Date.now()-Date.parse(x.time)<86400000),{time,value:asset.value}].sort((a,b)=>Date.parse(a.time)-Date.parse(b.time)).slice(-290);
+}
 
-function liveAsset(f, old, provider) { const value=Number(f[0]), previous=Number(f[7]), date=f[12], time=f[6]; if (!Number.isFinite(value)) throw Error('invalid quote'); return {...old, value, previous, change:previous ? (value/previous-1)*100 : old.change, open:Number(f[2]), high:Number(f[4]), low:Number(f[5]), quoteTime:`${date} ${time}`, provider}; }
-function addPoint(asset) { const pts=asset.intraday||[]; const last=pts.at(-1); if(last && Date.now()-new Date(last.time).getTime()<150000) return; asset.intraday=[...pts,{time:new Date().toISOString(),value:asset.value}].slice(-290); }
 function getTencent() { return new Promise((resolve,reject)=>{ const old=$('#tencentQuote'); if(old) old.remove(); const s=document.createElement('script'); s.id='tencentQuote'; s.src=`https://qt.gtimg.cn/q=hf_GC,hf_XAU&_=${Date.now()}`; const timer=setTimeout(()=>{s.remove();reject(Error('timeout'));},8000); s.onload=()=>{clearTimeout(timer);resolve([window.v_hf_GC,window.v_hf_XAU]);}; s.onerror=()=>{clearTimeout(timer);reject(Error('load failed'));}; document.head.appendChild(s); }); }
-async function refreshLive(data) { try { const [gc,xau] = await getTencent(); const m=data.market; m.gold=liveAsset(String(xau).split(','),{...m.gold,symbol:'XAU',name:'伦敦现货黄金'},'腾讯全球行情 · 伦敦现货 XAU（实时）'); m.spotGold=liveAsset(String(gc).split(','),{...(m.spotGold||{}),symbol:'GC',name:'COMEX 黄金主连'},'腾讯全球行情 · COMEX GC（实时）'); addPoint(m.gold); const fx=Number(m.fx?.value); if(Number.isFinite(fx)) { const value=m.gold.value*fx/31.1034768,old=m.domesticReference||{}; m.domesticReference={value,change:old.value?(value/old.value-1)*100:0,quoteTime:m.gold.quoteTime,provider:'伦敦现货 × USD/CNY 折算的国内人民币克价参考'}; } m.liveUpdatedAt=new Date().toISOString(); if(data.goldForecast) data.goldForecast.marketDate=String(xau).split(',')[12]; return true; } catch(e) { console.warn('quote unavailable',e); return false; } }
+async function refreshLive(data) {
+  try {
+    const [gc,xau]=await getTencent(), m=data.market;
+    m.gold=liveAsset(String(xau).split(','),{...m.gold,symbol:'XAU',name:'伦敦现货黄金'},'腾讯公开伦敦现货 XAU');
+    try {m.spotGold=liveAsset(String(gc).split(','),{...(m.spotGold||{}),symbol:'GC',name:'COMEX 黄金主连'},'腾讯公开COMEX期货');} catch(e){console.warn(e);}
+    addPoint(m.gold);
+    const fx=Number(m.fx?.value);
+    if(fx>0 && GoldQuality.fresh(m.fx?.quoteTime,72)) m.domesticReference={value:m.gold.value*fx/31.1034768,quoteTime:m.gold.quoteTime,change:null,provider:'伦敦现货×参考汇率；非国内成交价'};
+    else m.domesticReference=null;
+    m.liveUpdatedAt=new Date().toISOString();
+    return true;
+  } catch(e) {console.warn('quote unavailable',e);return false;}
+}
+function renderKpis(m) {
+  const domestic=GoldQuality.fresh(m.cmbGold?.quoteTime,96)?m.cmbGold:null;
+  const rows=[['伦敦现货黄金 · 公开报价',m.gold,'USD/OZ'],['COMEX 黄金主连 · 期货',m.spotGold,'USD/OZ'],['国内 Au99.99 · 招行官网转发',domestic,'CNY/G']];
+  $('#kpiRibbon').innerHTML=rows.map(([name,a,u])=>'<article class="kpi"><small><span>'+name+'</span><span>'+u+'</span></small><strong>'+n(a?.value)+'</strong><em class="'+tone(a?.change)+'">'+pct(a?.change)+'</em><p>'+esc(a?.quoteTime||'缺少有效源报价')+'</p><p>'+esc(a?.provider||'上金所品种；非App客户成交价')+'</p></article>').join('');
+  text('#sourceAudit','XAU：'+(m.gold.provider||'公开报价')+'；源时间 '+(m.gold.quoteTime||'未知')+'。'+(m.sourceQuality?.note||'尚无双源核对结果')+' 最近核对时间：'+(m.sourceQuality?.checkedAt||'未知')+'。国内金价使用招行官网 Au99.99 公开转发行情，非账户金成交价。日K来源：'+(m.gold.historyProvider||'待核验')+'。专家为具名机构媒体转述，原文链接供核对。');
+}
 
-function renderKpis(m) { const rows=[['伦敦现货黄金 · 实时',m.gold,'USD/OZ'],['COMEX 黄金主连 · 实时',m.spotGold,'USD/OZ'],['国内金价参考 · 人民币克价',m.domesticReference,'CNY/G']]; $('#kpiRibbon').innerHTML=rows.map(([name,a,u])=>`<article class="kpi"><small><span>${name}</span><span>${u}</span></small><strong>${n(a?.value)}</strong><em class="${tone(a?.change)}">${pct(a?.change)}</em><p>${esc(a?.quoteTime||'公开行情计算中')}</p></article>`).join(''); }
 
 /* ---------- chart engine ---------- */
 function setupCanvas(el, cssHeight) { const r=el.getBoundingClientRect(); const d=Math.min(devicePixelRatio||1,2); el.width=Math.max(1,Math.round(r.width*d)); el.height=Math.max(1,Math.round((cssHeight||r.height)*d)); const c=el.getContext('2d'); c.setTransform(d,0,0,d,0,0); return [c, r.width, cssHeight||r.height]; }
@@ -121,8 +155,8 @@ function drawIntraday(asset) {
   text('#intradayStamp', `24h 5分钟线 · ${stamp} + 页面实时`);
 }
 
-function renderNews(news) { const items=(news.items||[]).filter(x=>x.category==='黄金'); $('#newsTimeline').innerHTML=items.length?items.map(x=>`<a class="news-item" href="${esc(x.url)}" target="_blank" rel="noopener"><time>${esc(x.time)}</time><div><h3>${esc(x.title)}</h3><p>${esc(x.summary||'公开黄金资讯')}</p><span>${esc(x.source||'公开来源')}</span></div></a>`).join(''):'<div class="news-item"><div>等待下一次公开资讯更新</div></div>'; if(news.updatedAt) text('#newsStamp',`每6小时更新 · ${new Date(news.updatedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}`); }
-function renderExperts(data) { const items=data.weeklyExpertUpdates?.length?data.weeklyExpertUpdates:(data.experts||[]); $('#expertGrid').innerHTML=items.length?items.slice(0,6).map(x=>`<article class="expert-card"><small>${esc(x.institution)}</small><h3>${esc(x.expert)}</h3><p>${esc(x.view)}</p><footer><span>${esc(x.date)} · ${esc(x.source)}</span><a href="${esc(x.url)}" target="_blank" rel="noopener">查看原文 ↗</a></footer></article>`).join(''):'<article class="expert-card"><small>SCHEDULED REFRESH</small><h3>专家观点聚合中</h3><p>每 6 小时自动抓取公开机构黄金预测观点（Google News 预测聚合 + 金十机构快讯）。下一次更新将自动填充本区。</p><footer><span>自动更新中</span></footer></article>'; text('#expertStamp',data.deployment?.expertWeeklyUpdatedAt ? `每6小时更新 · 最近 ${new Date(data.deployment.expertWeeklyUpdatedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}` : '每 6 小时公开源更新'); }
+function renderNews(news) { const items=(news.items||[]).filter(x=>x.category==='黄金' && GoldQuality.fresh(x.publishedAt,48)); $('#newsTimeline').innerHTML=items.length?items.map(x=>`<a class="news-item" href="${esc(x.url)}" target="_blank" rel="noopener"><time>${esc(x.time)}</time><div><h3>${esc(x.title)}</h3><p>${esc(x.summary||'公开黄金资讯')}</p><span>${esc(x.source||'公开来源')}</span></div></a>`).join(''):'<div class="news-item"><div>等待下一次公开资讯更新</div></div>'; if(news.updatedAt) text('#newsStamp',`每6小时更新 · ${new Date(news.updatedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}`); }
+function renderExperts(data) { const items=(data.weeklyExpertUpdates||[]).filter(x=>GoldQuality.fresh(x.publishedAt||x.date,168)); $('#expertGrid').innerHTML=items.length?items.slice(0,6).map(x=>`<article class="expert-card"><small>${esc(x.institution)}</small><h3>${esc(x.expert)}</h3><p>${esc(x.view)}</p><footer><span>${esc(x.date)} · ${esc(x.source)}</span><a href="${esc(x.url)}" target="_blank" rel="noopener">查看原文 ↗</a></footer></article>`).join(''):'<article class="expert-card"><small>SCHEDULED REFRESH</small><h3>专家观点聚合中</h3><p>每 6 小时自动抓取公开机构黄金预测观点（新华财经 + 金十 + Google News）。未检索到符合条件的近期观点时，本区保持资料不足提示。</p><footer><span>自动更新中</span></footer></article>'; text('#expertStamp',data.deployment?.expertWeeklyUpdatedAt ? `每6小时检查 · 最近 ${new Date(data.deployment.expertWeeklyUpdatedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}` : '每 6 小时公开源更新'); }
 
 function renderInsights(data) {
   const a = data.analysis || {};
@@ -132,8 +166,9 @@ function renderInsights(data) {
   text('#invalidation', a.invalidation || '价格脱离近5日区间并获得成交确认');
 }
 function renderForecastExtras(f, price) {
+  $('#outlookMap').style.display = f.expectedRange ? '' : 'none';
   const sc = f.scenarios || {};
-  text('#baseCaseText', sc.base != null ? `概率 ${sc.base}% · ${f.bias || ''}` : '--');
+  text('#baseCaseText', f.bias || '--');
   text('#bullCaseTarget', f.resistance != null ? n(f.resistance, 1) : '--');
   text('#bullCaseText', `${sc.bull != null ? sc.bull + '% 概率 · ' : ''}${f.triggerUp || ''}`);
   text('#bearCaseTarget', f.support != null ? n(f.support, 1) : '--');
@@ -148,15 +183,16 @@ function renderForecastExtras(f, price) {
   setLeft('#currentMarker', price); setLeft('#supportMarker', f.support); setLeft('#resistanceMarker', f.resistance);
   const win = $('#forecastWindow');
   if (win && f.expectedRange) { win.style.left = pos(f.expectedRange[0]) + '%'; win.style.right = (100 - pos(f.expectedRange[1])) + '%'; }
-  const stamp = f.computedAt ? `每2小时更新 · ${new Date(f.computedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}` : '每2小时更新';
+  const stamp = f.computedAt ? `随有效快照重算 · ${new Date(f.computedAt).toLocaleString('zh-CN',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}` : '每2小时更新';
   text('#forecastDate', `${f.marketDate || '--'} · ${stamp}`);
+  text('#confidence',state.data?.forecastEvaluation?.count ? '核验中' : '待验证');
   text('#expertWeight', `${f.weights?.expertViews ?? 50}%`);
   text('#marketWeight', `${f.weights?.marketAndMacroData ?? 50}%`);
   const signal = f.signals || {}, votes = signal.expertVotes || {};
   const shock = signal.eventShockPenalty ? ` · 事件冲击 -${signal.eventShockPenalty}` : '';
   text('#forecastSignal', `专家 ${n(signal.expertScore,1)} / 数据 ${n(signal.marketScore,1)} / 综合 ${n(signal.combinedScore,1)} · 专家观点 ${votes.total ?? 0} 条${shock}`);
 }
-function render(data) { state.data=data;const m=data.market,a=m.gold,f=data.goldForecast||{};renderKpis(m);text('#systemState',m.liveUpdatedAt?'公网行情已连接':'公开快照加载中');text('#heroSymbol',`${a.symbol||'XAU'} · ${a.name||'伦敦现货黄金'}`);text('#heroValue',n(a.value));text('#heroChange',pct(a.change));$('#heroChange').className=tone(a.change);text('#heroOpen',n(a.open));text('#heroHigh',n(a.high));text('#heroLow',n(a.low));text('#heroAmplitude',n(m.spotGold?.value));text('#heroAmount',a.quoteTime||'--');text('#regime',f.bias||'等待模型更新');text('#confidence',f.confidence||'--');text('#forecastNarrative',f.action||'基于公开行情的规则化情景');text('#baseCaseTarget',`${n(f.expectedRange?.[0],1)} — ${n(f.expectedRange?.[1],1)}`);text('#goldSupport',`${n(f.support,1)} USD/OZ`);text('#goldResistance',`${n(f.resistance,1)} USD/OZ`);renderForecastExtras(f,a.value);renderNews(data.news||{});renderExperts(data);renderInsights(data);drawDaily(a);drawIntraday(a);clock(); }
+function render(data) { if(data.goldForecast && (!GoldQuality.fresh(data.goldForecast.quoteTime||data.market.gold.quoteTime,72) || !GoldQuality.fresh(data.goldForecast.computedAt,6))) {data.goldForecast={...data.goldForecast,status:'suspended',bias:'预测已过期 · 等待重算',expectedRange:null,action:'预测输入或计算时间过期，暂不显示有效预测区间。'};} state.data=data;const m=data.market,a=m.gold,f=data.goldForecast||{};renderKpis(m);text('#systemState',m.liveUpdatedAt?'公网行情已连接':'公开快照加载中');text('#heroSymbol',`${a.symbol||'XAU'} · ${a.name||'伦敦现货黄金'}`);text('#heroValue',n(a.value));text('#heroChange',pct(a.change));$('#heroChange').className=tone(a.change);text('#heroOpen',n(a.open));text('#heroHigh',n(a.high));text('#heroLow',n(a.low));text('#heroAmplitude',n(m.spotGold?.value));text('#heroAmount',a.quoteTime||'--');text('#regime',f.bias||'等待模型更新');text('#confidence',f.confidence||'--');text('#forecastNarrative',f.action||'基于公开行情的规则化情景');text('#baseCaseTarget',`${n(f.expectedRange?.[0],1)} — ${n(f.expectedRange?.[1],1)}`);text('#goldSupport',`${n(f.support,1)} USD/OZ`);text('#goldResistance',`${n(f.resistance,1)} USD/OZ`);renderForecastExtras(f,a.value);renderNews(data.news||{});renderExperts(data);renderInsights(data);drawDaily(a);drawIntraday(a);clock(); }
 let resizeTimer; addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(state.data){drawDaily(state.data.market.gold);drawIntraday(state.data.market.gold);}},200);});
 async function load(){try{const r=await fetch(`./data/dashboard.json?t=${Date.now()}`,{cache:'no-store'});const data=await r.json();await refreshLive(data);render(data);}catch(e){console.error(e);text('#systemState','数据连接暂不可用');}}
 $('#refreshBtn').onclick=load;$('#fullscreenBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();setInterval(clock,1000);setInterval(()=>state.data&&refreshLive(state.data).then(()=>render(state.data)),15000);setInterval(load,300000);load();
