@@ -31,13 +31,15 @@ function getJson(url) {
   if (!row || !Number.isFinite(Number(row.curPrice))) throw new Error('CMB Au99.99 quote missing');
   const dashboard = JSON.parse(fs.readFileSync(target, 'utf8'));
   const previous = Number(row.preClose);
-  const quoteTime = `${payload.body.time || new Date().toISOString().slice(0, 16).replace('T', ' ')}:${String(row.time || '').split(':').at(-1) || '00'}`;
+  const sourceDate = String(payload.body.time || '').slice(0,10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sourceDate) || !/^\d{2}:\d{2}:\d{2}$/.test(row.time || '')) throw Error('CMB源日期或品种行情时间缺失');
+  const quoteTime = `${sourceDate} ${row.time}`;
   dashboard.market.cmbGold = {
     ...dashboard.market.cmbGold,
     symbol: 'Au99.99', name: '招商银行黄金市场行情 · Au99.99', value: Number(row.curPrice),
     change: previous ? (Number(row.curPrice) / previous - 1) * 100 : null, changeValue: Number(row.upDown),
     open: Number(row.open), high: Number(row.high), low: Number(row.low), average: Number(row.avePrice), volume: Number(row.tradeCount),
-    unit: 'CNY/G', provider: '招商银行', quoteTime, sourceUrl: 'https://m.cmbchina.com/goldrate.html', status: 'live',
+    unit: 'CNY/G', provider: '招商银行官网转发 Au99.99', quoteTime, fetchedAt: new Date().toISOString(), sourcePageTime: payload.body.time, sourceUrl: 'https://m.cmbchina.com/goldrate.html', status: 'public-delayed',
     scope: '招商银行官网黄金市场行情（上海金交所 Au99.99 品种），非账户金客户成交价'
   };
   dashboard.market.quality = dashboard.market.quality || {};
