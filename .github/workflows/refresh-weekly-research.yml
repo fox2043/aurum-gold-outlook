@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: gold-intelligence
+  group: gold-data-writer
   cancel-in-progress: false
 
 jobs:
@@ -20,9 +20,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: node scripts/refresh-gold-intelligence.js || echo "intelligence feed unavailable"
-      - run: node scripts/refresh-weekly-gold-research.js || echo "expert research feed unavailable"
-      - run: node scripts/refresh-gold-forecast.js || echo "forecast refresh unavailable"
+      - run: node scripts/refresh-gold-intelligence.js
+      - run: node scripts/refresh-weekly-gold-research.js
+      - run: node scripts/refresh-gold-forecast.js
       - run: |
           git config user.name "aurum-signal-bot"
           git config user.email "aurum-signal-bot@users.noreply.github.com"
