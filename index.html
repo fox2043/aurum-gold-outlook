@@ -9,7 +9,7 @@
   <meta name="description" content="黄金行情、国内金价参考、实时情报与走势预测静态展示站" />
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=2026082901" />
+  <link rel="stylesheet" href="styles.css?v=2026090502" />
 </head>
 <body>
   <div class="grid-field" aria-hidden="true"></div>
@@ -22,6 +22,7 @@
     </header>
 
     <section class="gold-strip" id="kpiRibbon" aria-label="黄金核心报价"><div class="loading"></div></section>
+    <details class="source-audit"><summary id="sourceSummary">数据源与时效核验</summary><div id="sourceAudit"></div><p>官方参考：<a href="https://www.sge.com.cn/sjzx/quotation_daily_new" target="_blank" rel="noopener">上金所每日行情 ↗</a> · <a href="https://china.gold.org/" target="_blank" rel="noopener">世界黄金协会中国 ↗</a> · <a href="https://www.gold.org/goldhub/tools/gold-return-attribution-model" target="_blank" rel="noopener">黄金驱动因素研究方法 ↗</a></p></details>
 
     <section class="news-panel full-news" aria-labelledby="newsTitle"><div class="panel-head"><div><small>LIVE GOLD INTELLIGENCE / 每 6 小时更新</small><h2 id="newsTitle">实时黄金情报</h2></div><span class="live-dot" id="newsStamp">事件流</span></div><div id="newsTimeline" class="news-list"><div class="loading"></div></div></section>
 
@@ -44,10 +45,10 @@
       </section>
 
       <aside class="forecast-panel" aria-labelledby="forecastTitle">
-        <div class="panel-head"><div><small>MODELLED OUTLOOK / 1–5D · 每 2 小时更新</small><h2 id="forecastTitle">黄金走势预测</h2></div><span id="forecastDate">--</span></div>
-        <div class="forecast-hero"><small>未来 1—5 个交易日基准判断</small><strong id="regime">计算中</strong><div class="confidence"><b id="confidence">--</b><span>置信度<br>%</span></div><p id="forecastNarrative">模型正在计算价格区间与关键条件</p><div class="forecast-disclaimer">预测仅作参考，不作为实际投资建议</div></div>
-        <div class="forecast-weight"><span>专家公开观点 <b id="expertWeight">50%</b></span><i></i><span>量价·宏观·资讯 <b id="marketWeight">50%</b></span><small id="forecastSignal">综合信号计算中</small></div>
-        <div class="target-band"><span>预期核心区间</span><strong id="baseCaseTarget">--</strong><small>USD / OZ</small></div>
+        <div class="panel-head"><div><small>MODELLED OUTLOOK / 5D · 随有效快照重算</small><h2 id="forecastTitle">黄金走势预测</h2></div><span id="forecastDate">--</span></div>
+        <div class="forecast-hero"><small>未来 5 个交易日基准判断</small><strong id="regime">计算中</strong><div class="confidence"><b id="confidence">待验证</b><span>预测效果<br>前瞻核验</span></div><p id="forecastNarrative">模型正在计算价格区间与关键条件</p><div class="forecast-disclaimer">预测仅作参考，不作为实际投资建议</div></div>
+        <div class="forecast-weight"><span>专家公开观点 <b id="expertWeight">50%</b></span><i></i><span>量价与波动数据 <b id="marketWeight">50%</b></span><small id="forecastSignal">综合信号计算中</small></div>
+        <div class="target-band"><span>5日波动情景区间 · 非保证范围</span><strong id="baseCaseTarget">--</strong><small>USD / OZ</small></div>
         <div class="outlook-map" id="outlookMap" aria-label="未来五日黄金预测目标区间">
           <div class="map-scale"><span id="mapHigh">--</span><span id="mapCurrent">--</span><span id="mapLow">--</span></div>
           <div class="map-track"><div class="forecast-window" id="forecastWindow"><span>未来 1—5 日预期区间</span></div><i class="current-marker" id="currentMarker"><b>当前价</b></i><i class="support-marker" id="supportMarker"><b>支撑</b></i><i class="resistance-marker" id="resistanceMarker"><b>压力</b></i></div>
@@ -62,6 +63,6 @@
       <section class="signal-panel top-feedback"><div class="panel-head"><div><small>MODEL RATIONALE / ANALYST FEEDBACK</small><h2>预测依据与反馈</h2></div></div><div class="signal-list" id="insightStack"><div class="loading"></div></div><div class="risk-box"><small>使用提示</small><p id="invalidation">等待模型计算</p></div></section>
     </section>
 
-    <footer>本页为非商业用途的公开静态研究展示。预测为规则化概率情景，不构成投资建议、收益承诺或交易指令。</footer>
-  </main><script src="app.js?v=2026082901"></script>
+    <footer>本页为非商业用途的公开静态研究展示。预测为未校准的规则化情景，不构成投资建议、收益承诺或交易指令。</footer>
+  </main><script src="data-quality.js?v=2026090502"></script><script src="app.js?v=2026090502"></script>
 </body></html>
