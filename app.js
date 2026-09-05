@@ -123,7 +123,7 @@ function drawDaily(asset) {
   text('#dailyStamp', `伦敦金日K · ${rows.at(-1).date} · 每5分钟同步`);
 }
 function drawIntraday(asset) {
-  const el = $('#intradayChart'); const p = (asset.intraday || []).filter(x => Number.isFinite(Number(x.value)));
+  const el = $('#intradayChart'); const p = (asset.intraday || []).filter(x => Number.isFinite(Number(x.value)) && Date.now()-Date.parse(x.time)<=86400000 && Date.parse(x.time)<=Date.now());
   $('#intradayEmpty') && ($('#intradayEmpty').style.display = p.length < 2 ? 'flex' : 'none');
   if (!el || p.length < 2) return;
   const pts = p.map(x => ({ t: new Date(x.time).getTime(), v: +x.value }));
@@ -131,18 +131,11 @@ function drawIntraday(asset) {
   const ok = drawCurve(el, pts, {
     height: 190,
     xTicks(points) {
-      const end = points.at(-1).t, start = points[0].t;
-      const out = [];
-      for (let h = 0; h <= 24; h += 6) {
-        const target = end - (24 - h) * 3600000;
-        if (target < start - 600000) continue;
-        let best = 0, bd = Infinity;
-        points.forEach((q, i) => { const d = Math.abs(q.t - target); if (d < bd) { bd = d; best = i; } });
-        out.push({ pos: 14 + best * (w - 76) / (points.length - 1), label: h === 24 ? '现在' : h === 0 ? '-24h' : `-${24 - h}h` });
-      }
-      const firstLabel = new Date(start); const hh = `${String(firstLabel.getHours()).padStart(2,'0')}:${String(firstLabel.getMinutes()).padStart(2,'0')}`;
-      out.push({ pos: 14, label: hh });
-      return out;
+      return [0,.33,.66,1].map(f=>{
+        const i=Math.round(f*(points.length-1));
+        const label=new Date(points[i].t).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false});
+        return {pos:14+i*(w-76)/(points.length-1),label};
+      });
     }
   });
   if (!ok) return;
@@ -194,5 +187,19 @@ function renderForecastExtras(f, price) {
 }
 function render(data) { if(data.goldForecast && (!GoldQuality.fresh(data.goldForecast.quoteTime||data.market.gold.quoteTime,72) || !GoldQuality.fresh(data.goldForecast.computedAt,6))) {data.goldForecast={...data.goldForecast,status:'suspended',bias:'预测已过期 · 等待重算',expectedRange:null,action:'预测输入或计算时间过期，暂不显示有效预测区间。'};} state.data=data;const m=data.market,a=m.gold,f=data.goldForecast||{};renderKpis(m);text('#systemState',m.liveUpdatedAt?'公网行情已连接':'公开快照加载中');text('#heroSymbol',`${a.symbol||'XAU'} · ${a.name||'伦敦现货黄金'}`);text('#heroValue',n(a.value));text('#heroChange',pct(a.change));$('#heroChange').className=tone(a.change);text('#heroOpen',n(a.open));text('#heroHigh',n(a.high));text('#heroLow',n(a.low));text('#heroAmplitude',n(m.spotGold?.value));text('#heroAmount',a.quoteTime||'--');text('#regime',f.bias||'等待模型更新');text('#confidence',f.confidence||'--');text('#forecastNarrative',f.action||'基于公开行情的规则化情景');text('#baseCaseTarget',`${n(f.expectedRange?.[0],1)} — ${n(f.expectedRange?.[1],1)}`);text('#goldSupport',`${n(f.support,1)} USD/OZ`);text('#goldResistance',`${n(f.resistance,1)} USD/OZ`);renderForecastExtras(f,a.value);renderNews(data.news||{});renderExperts(data);renderInsights(data);drawDaily(a);drawIntraday(a);clock(); }
 let resizeTimer; addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{if(state.data){drawDaily(state.data.market.gold);drawIntraday(state.data.market.gold);}},200);});
-async function load(){try{const r=await fetch(`./data/dashboard.json?t=${Date.now()}`,{cache:'no-store'});const data=await r.json();await refreshLive(data);render(data);}catch(e){console.error(e);text('#systemState','数据连接暂不可用');}}
+async function load(){
+  try {
+    // Actions data commits do not trigger Pages builds. Read the live repository
+    // feed as well as the deployed fallback; prefer the newest valid snapshot.
+    const urls=[window.AURUM_DATA_URL || 'https://raw.githubusercontent.com/fox2043/aurum-gold-outlook/main/data/dashboard.json','./data/dashboard.json'];
+    const results=await Promise.allSettled(urls.map(async url=>{
+      const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),8000);
+      try {const r=await fetch(url+'?t='+Date.now(),{cache:'no-store',signal:controller.signal});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();if(!d.market?.gold)throw Error('invalid snapshot');return d;}finally{clearTimeout(timer);}
+    }));
+    const updated=d=>Math.max(...[d.market?.updatedAt,d.goldForecast?.computedAt,d.news?.updatedAt,d.deployment?.expertWeeklyUpdatedAt].map(x=>Date.parse(x)||0));
+    const candidates=results.filter(r=>r.status==='fulfilled').map(r=>r.value).sort((a,b)=>updated(b)-updated(a));
+    if(!candidates.length)throw Error('所有快照源不可用');
+    const data=candidates[0];await refreshLive(data);render(data);
+  }catch(e){console.error(e);text('#systemState','数据连接暂不可用');}
+}
 $('#refreshBtn').onclick=load;$('#fullscreenBtn').onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();setInterval(clock,1000);setInterval(()=>state.data&&refreshLive(state.data).then(()=>render(state.data)),15000);setInterval(load,300000);load();
